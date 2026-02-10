@@ -117,7 +117,7 @@ def get_default_provider(**kwargs) -> BaseSearchProvider:
 
 
 # Auto-import all providers to trigger registration
-from . import baidu, exa, jina, perplexity, serper, tavily
+from . import baidu, exa, jina, openrouter, perplexity, serper, tavily
 
 __all__ = [
     "register_provider",
