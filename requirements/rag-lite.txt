@@ -2,7 +2,8 @@
 # DeepTutor Lightweight RAG Dependencies
 # ============================================
 # Install: pip install -r requirements/rag-lite.txt
-# LlamaIndex-only RAG pipeline + PDF parsing
+# Add-on layer for LlamaIndex-only RAG + PDF parsing.
+# Use with core/server (e.g., `core + rag-lite` or `server + rag-lite`).
 
 llama-index>=0.14.12
 PyMuPDF>=1.26.0

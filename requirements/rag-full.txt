@@ -2,6 +2,6 @@
 # DeepTutor Full RAG Dependencies
 # ============================================
 # Install: pip install -r requirements/rag-full.txt
-# Compatibility alias for rag-lite (llamaindex-only)
+# Compatibility alias for rag-lite (llamaindex-only add-on layer).
 
 -r rag-lite.txt

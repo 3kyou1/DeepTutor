@@ -6,13 +6,13 @@
 # For lighter installs, use the layered requirements:
 #   pip install -r requirements/core.txt        # CLI only (~80MB)
 #   pip install -r requirements/server.txt      # + API server
-#   pip install -r requirements/rag-lite.txt    # + lightweight RAG
-#   pip install -r requirements/rag-full.txt    # + all RAG providers
+#   pip install -r requirements/rag-lite.txt    # + LlamaIndex RAG
+#   pip install -r requirements/rag-full.txt    # compatibility alias of rag-lite
 #   pip install -r requirements/providers.txt   # + native LLM SDKs
 #   pip install -r requirements/dev.txt         # + dev/test tools
 
 -r requirements/server.txt
--r requirements/rag-full.txt
+-r requirements/rag-lite.txt
 -r requirements/providers.txt
 
 # ============================================

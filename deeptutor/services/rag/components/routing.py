@@ -290,7 +290,7 @@ class FileTypeRouter:
         """
         # Only llamaindex is supported; keep provider param for forward compatibility.
         if provider and provider != "llamaindex":
-            logger.warning("Unknown/legacy provider '%s', using llamaindex extension set", provider)
+            logger.warning(f"Unknown/legacy provider '{provider}', using llamaindex extension set")
         return cls.PARSER_EXTENSIONS | cls.TEXT_EXTENSIONS
 
     @classmethod

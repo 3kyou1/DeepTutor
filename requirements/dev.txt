@@ -4,7 +4,7 @@
 # Install: pip install -r requirements/dev.txt
 
 -r server.txt
--r rag-full.txt
+-r rag-lite.txt
 -r providers.txt
 
 pytest>=7.0.0

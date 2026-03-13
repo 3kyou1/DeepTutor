@@ -85,13 +85,17 @@ def _load_runtime_deps():
 
 PROFILE_COMMANDS: dict[str, list[str]] = {
     "cli-core": ["requirements/core.txt"],
-    "cli-rag-lite": ["requirements/core.txt", "requirements/rag-lite.txt"],
-    # Backward-compatible alias; keep accepted but hidden from UI choices.
-    "cli-rag-full": ["requirements/core.txt", "requirements/rag-lite.txt"],
+    "cli-rag": ["requirements/core.txt", "requirements/rag-lite.txt"],
     "web-basic": ["requirements/server.txt"],
-    "web-rag-lite": ["requirements/server.txt", "requirements/rag-lite.txt"],
-    # Backward-compatible alias; keep accepted but hidden from UI choices.
-    "web-rag-full": ["requirements/server.txt", "requirements/rag-lite.txt"],
+    "web-rag": ["requirements/server.txt", "requirements/rag-lite.txt"],
+}
+
+# Legacy aliases kept for backward compatibility (hidden from UI).
+PROFILE_ALIASES: dict[str, str] = {
+    "cli-rag-lite": "cli-rag",
+    "cli-rag-full": "cli-rag",
+    "web-rag-lite": "web-rag",
+    "web-rag-full": "web-rag",
 }
 
 CACHE_PATH = PROJECT_ROOT / "data" / "user" / "settings" / ".tour_cache.json"
@@ -185,6 +189,10 @@ def _needs_providers(catalog: dict[str, Any]) -> bool:
 # ---------------------------------------------------------------------------
 
 def _install_commands(profile: str, catalog: dict[str, Any]) -> list[tuple[list[str], Path]]:
+    profile = PROFILE_ALIASES.get(profile, profile)
+    if profile not in PROFILE_COMMANDS:
+        raise ValueError(f"Unknown install profile: {profile}")
+
     cmds: list[tuple[list[str], Path]] = []
     for req in PROFILE_COMMANDS[profile]:
         cmds.append(([sys.executable, "-m", "pip", "install", "-r", req], PROJECT_ROOT))
@@ -406,7 +414,7 @@ def _run_web_tour() -> None:
         "Choose a dependency profile",
         [
             ("web-basic", "web-basic", "FastAPI + Next.js"),
-            ("web-rag-lite", "web-rag-lite", "+ LlamaIndex RAG"),
+            ("web-rag", "web-rag", "+ LlamaIndex RAG"),
         ],
     )
     _save_cache({"step": 1, "mode": "web", "profile": profile, "status": "running"})
@@ -543,7 +551,7 @@ def _run_cli_tour() -> None:
         "Choose a dependency profile",
         [
             ("cli-core", "cli-core", "Minimal CLI (~80 MB)"),
-            ("cli-rag-lite", "cli-rag-lite", "+ LlamaIndex RAG"),
+            ("cli-rag", "cli-rag", "+ LlamaIndex RAG"),
         ],
     )
     _save_cache({"step": 1, "mode": "cli", "profile": profile})
