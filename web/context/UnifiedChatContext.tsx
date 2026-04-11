@@ -551,7 +551,7 @@ export function UnifiedChatProvider({ children }: { children: React.ReactNode })
           dispatch({ type: "STREAM_END", key, status: "failed" });
           return;
         }
-        const timerId = window.setTimeout(() => {
+        const timerId = setTimeout(() => {
           retryTimersRef.current.delete(timerId);
           dispatchToRunner(key, msg, attempt + 1);
         }, 200);
