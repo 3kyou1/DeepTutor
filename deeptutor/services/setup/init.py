@@ -84,6 +84,15 @@ DEFAULT_AGENTS_SETTINGS = {
         "research": {"temperature": 0.5, "max_tokens": 12000},
         "question": {"temperature": 0.7, "max_tokens": 4096},
         "co_writer": {"temperature": 0.7, "max_tokens": 4096},
+        "chat": {
+            "temperature": 0.2,
+            "responding": {"max_tokens": 8000},
+            "answer_now": {"max_tokens": 8000},
+            "thinking": {"max_tokens": 2000},
+            "observing": {"max_tokens": 2000},
+            "acting": {"max_tokens": 2000},
+            "react_fallback": {"max_tokens": 1500},
+        },
     },
     "tools": {
         "brainstorm": {"temperature": 0.8, "max_tokens": 2048},
@@ -117,7 +126,7 @@ def init_user_directories(project_root: Path | None = None) -> None:
 
     This function uses lazy initialization - directories are created on-demand
     when files are saved, rather than pre-creating all directories at startup.
-    
+
     Only essential configuration files (like settings/interface.json) are
     created at startup if they don't exist.
 
@@ -157,7 +166,7 @@ def init_user_directories(project_root: Path | None = None) -> None:
 def _ensure_essential_settings(path_service) -> None:
     """
     Ensure essential settings files exist.
-    
+
     This is the minimal initialization needed at startup.
     All other directories are created on-demand when files are saved.
     """

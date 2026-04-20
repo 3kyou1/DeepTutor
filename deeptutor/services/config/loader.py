@@ -29,6 +29,7 @@ def get_runtime_settings_dir(project_root: Path | None = None) -> Path:
     root = project_root or PROJECT_ROOT
     return root / "data" / "user" / "settings"
 
+
 def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
     """
     Deep merge two dictionaries, values in override will override values in base
@@ -107,8 +108,7 @@ def resolve_config_path(
     if config_path.exists():
         return config_path, False
     raise FileNotFoundError(
-        f"Configuration file not found: {config_file} "
-        f"(expected under {settings_dir})"
+        f"Configuration file not found: {config_file} (expected under {settings_dir})"
     )
 
 
@@ -257,6 +257,39 @@ def get_agent_params(module_name: str) -> dict:
     }
 
 
+DEFAULT_CHAT_PARAMS: dict[str, Any] = {
+    "temperature": 0.2,
+    "responding": {"max_tokens": 8000},
+    "answer_now": {"max_tokens": 8000},
+    "thinking": {"max_tokens": 2000},
+    "observing": {"max_tokens": 2000},
+    "acting": {"max_tokens": 2000},
+    "react_fallback": {"max_tokens": 1500},
+}
+
+
+def get_chat_params() -> dict[str, Any]:
+    """
+    Read ``capabilities.chat`` from agents.yaml with deep-merged defaults.
+
+    Unlike :func:`get_agent_params`, the chat capability has per-stage
+    sub-sections (``responding``, ``answer_now``, ``thinking``, ``observing``,
+    ``acting``, ``react_fallback``), each with its own ``max_tokens``. A single
+    ``temperature`` is shared across all stages.
+
+    Returns:
+        dict: Deep-merged chat configuration. Always contains every stage key
+        from :data:`DEFAULT_CHAT_PARAMS` so callers can index without checks.
+    """
+    path = get_runtime_settings_dir(PROJECT_ROOT) / "agents.yaml"
+    cfg: dict[str, Any] = {}
+    if path.exists():
+        with open(path, encoding="utf-8") as f:
+            agents_config = yaml.safe_load(f) or {}
+        cfg = (agents_config.get("capabilities", {}) or {}).get("chat", {}) or {}
+    return _deep_merge(DEFAULT_CHAT_PARAMS, cfg)
+
+
 __all__ = [
     "PROJECT_ROOT",
     "get_runtime_settings_dir",
@@ -264,5 +297,7 @@ __all__ = [
     "get_path_from_config",
     "parse_language",
     "get_agent_params",
+    "get_chat_params",
+    "DEFAULT_CHAT_PARAMS",
     "_deep_merge",
 ]

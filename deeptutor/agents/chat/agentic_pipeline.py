@@ -21,28 +21,74 @@ from deeptutor.core.trace import (
     new_call_id,
 )
 from deeptutor.runtime.registry.tool_registry import get_tool_registry
-from deeptutor.services.prompt import get_prompt_manager
+from deeptutor.services.config import get_chat_params
 from deeptutor.services.llm import (
     clean_thinking_tags,
-    complete as llm_complete,
     get_llm_config,
     get_token_limit_kwargs,
     prepare_multimodal_messages,
-    stream as llm_stream,
     supports_response_format,
     supports_tools,
 )
+from deeptutor.services.llm import (
+    stream as llm_stream,
+)
+from deeptutor.services.prompt import get_prompt_manager
 from deeptutor.tools.builtin import BUILTIN_TOOL_NAMES
 from deeptutor.utils.json_parser import parse_json_response
 
 logger = logging.getLogger(__name__)
 
 CHAT_EXCLUDED_TOOLS = {"geogebra_analysis"}
-CHAT_OPTIONAL_TOOLS = [
-    name for name in BUILTIN_TOOL_NAMES if name not in CHAT_EXCLUDED_TOOLS
-]
+CHAT_OPTIONAL_TOOLS = [name for name in BUILTIN_TOOL_NAMES if name not in CHAT_EXCLUDED_TOOLS]
 MAX_PARALLEL_TOOL_CALLS = 8
 MAX_TOOL_RESULT_CHARS = 4000
+
+CHAT_STAGE_KEYS: tuple[str, ...] = (
+    "responding",
+    "answer_now",
+    "thinking",
+    "observing",
+    "acting",
+    "react_fallback",
+)
+
+
+@dataclass
+class _ChatLimits:
+    """Per-stage ``max_tokens`` resolved from ``capabilities.chat`` in agents.yaml."""
+
+    responding: int
+    answer_now: int
+    thinking: int
+    observing: int
+    acting: int
+    react_fallback: int
+
+    @classmethod
+    def from_config(cls, cfg: dict[str, Any]) -> "_ChatLimits":
+        # Defaults below mirror DEFAULT_CHAT_PARAMS so the pipeline still works
+        # if the YAML block is missing entirely (e.g. minimal/legacy installs).
+        fallback = {
+            "responding": 8000,
+            "answer_now": 8000,
+            "thinking": 2000,
+            "observing": 2000,
+            "acting": 2000,
+            "react_fallback": 1500,
+        }
+        resolved: dict[str, int] = {}
+        for key in CHAT_STAGE_KEYS:
+            stage_cfg = cfg.get(key) if isinstance(cfg, dict) else None
+            if isinstance(stage_cfg, dict):
+                value = stage_cfg.get("max_tokens", fallback[key])
+            else:
+                value = fallback[key]
+            try:
+                resolved[key] = int(value)
+            except (TypeError, ValueError):
+                resolved[key] = fallback[key]
+        return cls(**resolved)
 
 
 @dataclass
@@ -68,6 +114,19 @@ class AgenticChatPipeline:
         self.api_version = getattr(self.llm_config, "api_version", None)
         self.registry = get_tool_registry()
         self._usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "calls": 0}
+        # capabilities.chat in agents.yaml drives token budgets and temperature
+        # for every LLM call below; falls back to DEFAULT_CHAT_PARAMS if the
+        # block is missing.
+        try:
+            chat_cfg = get_chat_params()
+        except Exception as exc:
+            logger.warning("Failed to load chat params, using defaults: %s", exc)
+            chat_cfg = {}
+        try:
+            self._chat_temperature = float(chat_cfg.get("temperature", 0.2))
+        except (TypeError, ValueError):
+            self._chat_temperature = 0.2
+        self._chat_limits = _ChatLimits.from_config(chat_cfg)
         # Prompts live in deeptutor/agents/chat/prompts/{zh,en}/agentic_chat.yaml
         # so all user-visible / LLM-facing copy is editable without touching code.
         try:
@@ -214,7 +273,9 @@ class AgenticChatPipeline:
                 )
 
             chunks: list[str] = []
-            async for chunk in self._stream_messages(messages, max_tokens=1200):
+            async for chunk in self._stream_messages(
+                messages, max_tokens=self._chat_limits.thinking
+            ):
                 if not chunk:
                     continue
                 chunks.append(chunk)
@@ -310,7 +371,9 @@ class AgenticChatPipeline:
             )
 
             chunks: list[str] = []
-            async for chunk in self._stream_messages(messages, max_tokens=1200):
+            async for chunk in self._stream_messages(
+                messages, max_tokens=self._chat_limits.observing
+            ):
                 if not chunk:
                     continue
                 chunks.append(chunk)
@@ -372,7 +435,9 @@ class AgenticChatPipeline:
             )
 
             chunks: list[str] = []
-            async for chunk in self._stream_messages(messages, max_tokens=1800):
+            async for chunk in self._stream_messages(
+                messages, max_tokens=self._chat_limits.responding
+            ):
                 if not chunk:
                     continue
                 chunks.append(chunk)
@@ -427,7 +492,9 @@ class AgenticChatPipeline:
             user_prompt = self._t(
                 "answer_now.user",
                 original_user_message=original_user_message,
-                partial_response=partial_response.strip() if partial_response.strip() else "(empty)",
+                partial_response=partial_response.strip()
+                if partial_response.strip()
+                else "(empty)",
                 trace_summary=trace_summary,
             )
             messages = self._build_messages(
@@ -437,7 +504,9 @@ class AgenticChatPipeline:
             )
 
             chunks: list[str] = []
-            async for chunk in self._stream_messages(messages, max_tokens=1800):
+            async for chunk in self._stream_messages(
+                messages, max_tokens=self._chat_limits.answer_now
+            ):
                 if not chunk:
                     continue
                 chunks.append(chunk)
@@ -496,7 +565,7 @@ class AgenticChatPipeline:
             messages=messages,
             tools=tool_schemas,
             tool_choice="auto",
-            **self._completion_kwargs(max_tokens=1500),
+            **self._completion_kwargs(max_tokens=self._chat_limits.acting),
         )
         self._accumulate_usage(response)
         if not response.choices:
@@ -689,7 +758,7 @@ class AgenticChatPipeline:
             response_format={"type": "json_object"}
             if supports_response_format(self.binding, self.model)
             else None,
-            **self._completion_kwargs(max_tokens=800),
+            **self._completion_kwargs(max_tokens=self._chat_limits.react_fallback),
         ):
             _chunks.append(_c)
         response = "".join(_chunks)
@@ -820,9 +889,7 @@ class AgenticChatPipeline:
         if context.memory_context:
             system_parts.append(context.memory_context)
 
-        messages: list[dict[str, Any]] = [
-            {"role": "system", "content": "\n\n".join(system_parts)}
-        ]
+        messages: list[dict[str, Any]] = [{"role": "system", "content": "\n\n".join(system_parts)}]
         for item in context.conversation_history:
             role = item.get("role")
             content = item.get("content")
@@ -890,7 +957,7 @@ class AgenticChatPipeline:
         )
 
     def _completion_kwargs(self, max_tokens: int) -> dict[str, Any]:
-        kwargs: dict[str, Any] = {"temperature": 0.2}
+        kwargs: dict[str, Any] = {"temperature": self._chat_temperature}
         if self.model:
             kwargs.update(get_token_limit_kwargs(self.model, max_tokens))
         return kwargs
@@ -898,7 +965,14 @@ class AgenticChatPipeline:
     def _can_use_native_tool_calling(self) -> bool:
         if not supports_tools(self.binding, self.model):
             return False
-        return self.binding not in {"anthropic", "claude", "ollama", "lm_studio", "vllm", "llama_cpp"}
+        return self.binding not in {
+            "anthropic",
+            "claude",
+            "ollama",
+            "lm_studio",
+            "vllm",
+            "llama_cpp",
+        }
 
     def _normalize_enabled_tools(self, enabled_tools: list[str] | None) -> list[str]:
         selected = enabled_tools or []
@@ -913,6 +987,7 @@ class AgenticChatPipeline:
         # Delegate to the shared helper so every capability uses the
         # exact same gate (presence + non-empty original_user_message).
         from deeptutor.capabilities._answer_now import extract_answer_now_context
+
         return extract_answer_now_context(context)
 
     async def _execute_tool_call(
