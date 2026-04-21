@@ -77,3 +77,47 @@ def test_submit_cold_start_answers(monkeypatch) -> None:
 
     assert response.status_code == 200
     assert response.json()["profile_source"] == "cold_start"
+
+
+def test_get_scientist_resonance(monkeypatch) -> None:
+    class FakeService:
+        async def get_resonance(self, language="zh"):
+            return {
+                "long_term": {"slug": "ramanujan", "name": "Srinivasa Ramanujan"},
+                "recent_state": None,
+            }
+
+    monkeypatch.setattr(
+        "deeptutor.api.routers.personalization.get_scientist_resonance_service",
+        lambda: FakeService(),
+    )
+
+    with TestClient(_build_app()) as client:
+        response = client.get("/api/v1/personalization/scientist-resonance?language=zh")
+
+    assert response.status_code == 200
+    assert response.json()["long_term"]["slug"] == "ramanujan"
+
+
+def test_regenerate_scientist_resonance(monkeypatch) -> None:
+    class FakeService:
+        async def regenerate(self, language="zh", mode="both"):
+            assert mode == "recent_state"
+            return {
+                "long_term": {"slug": "turing", "name": "Alan Turing"},
+                "recent_state": {"slug": "feynman", "name": "Richard Feynman"},
+            }
+
+    monkeypatch.setattr(
+        "deeptutor.api.routers.personalization.get_scientist_resonance_service",
+        lambda: FakeService(),
+    )
+
+    with TestClient(_build_app()) as client:
+        response = client.post(
+            "/api/v1/personalization/scientist-resonance/regenerate",
+            json={"language": "zh", "mode": "recent_state"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["recent_state"]["slug"] == "feynman"
