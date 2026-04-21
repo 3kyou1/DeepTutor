@@ -45,10 +45,21 @@ export interface ScientistResonanceCard {
   reason: string;
   resonance_axes: string[];
   confidence_style: "strong_resonance" | "phase_resonance";
+  loading_copy_zh: string;
+  loading_copy_en: string;
+  bio_zh: string;
+  bio_en: string;
+  achievements_zh: string[];
+  achievements_en: string[];
+}
+
+export interface ScientistResonanceLongTermResult {
+  primary: ScientistResonanceCard;
+  secondary: ScientistResonanceCard[];
 }
 
 export interface ScientistResonanceResponse {
-  long_term: ScientistResonanceCard | null;
+  long_term: ScientistResonanceLongTermResult | null;
   recent_state: ScientistResonanceCard | null;
 }
 

@@ -1046,5 +1046,12 @@
   "scientist_resonance.card.why": "Why this match",
   "scientist_resonance.modal.kicker": "Researcher Mirror",
   "scientist_resonance.card.confidence.strong": "Stable resonance",
-  "scientist_resonance.card.confidence.phase": "Current phase"
+  "scientist_resonance.card.confidence.phase": "Current phase",
+  "scientist_resonance.secondary.a": "Secondary Resonance A",
+  "scientist_resonance.secondary.b": "Secondary Resonance B",
+  "scientist_resonance.hover.dossier": "Scientist Dossier",
+  "scientist_resonance.hover.achievements": "Signature Achievements",
+  "scientist_resonance.loading.kicker": "Reweaving the Mirror",
+  "scientist_resonance.loading.subtitle": "Re-inferring your resonance from your profile and recent state.",
+  "scientist_resonance.loading.fallback": "The scientists are debating quietly in the background. A fresh answer is on the way."
 }

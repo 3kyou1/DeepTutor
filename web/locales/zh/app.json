@@ -1046,5 +1046,12 @@
   "scientist_resonance.card.why": "相似原因",
   "scientist_resonance.modal.kicker": "研究者镜像",
   "scientist_resonance.card.confidence.strong": "稳定强共振",
-  "scientist_resonance.card.confidence.phase": "当前阶段共振"
+  "scientist_resonance.card.confidence.phase": "当前阶段共振",
+  "scientist_resonance.secondary.a": "次共振原型 A",
+  "scientist_resonance.secondary.b": "次共振原型 B",
+  "scientist_resonance.hover.dossier": "科学家档案",
+  "scientist_resonance.hover.achievements": "代表成就",
+  "scientist_resonance.loading.kicker": "镜像重组中",
+  "scientist_resonance.loading.subtitle": "正在根据你的 profile 与近期状态重新推理这次共振。",
+  "scientist_resonance.loading.fallback": "研究者们正在后台小声争论，马上就会给你一个新答案。"
 }

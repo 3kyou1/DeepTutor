@@ -83,7 +83,13 @@ def test_get_scientist_resonance(monkeypatch) -> None:
     class FakeService:
         async def get_resonance(self, language="zh"):
             return {
-                "long_term": {"slug": "ramanujan", "name": "Srinivasa Ramanujan"},
+                "long_term": {
+                    "primary": {"slug": "ramanujan", "name": "Srinivasa Ramanujan"},
+                    "secondary": [
+                        {"slug": "turing", "name": "Alan Turing"},
+                        {"slug": "feynman", "name": "Richard Feynman"},
+                    ],
+                },
                 "recent_state": None,
             }
 
@@ -96,7 +102,8 @@ def test_get_scientist_resonance(monkeypatch) -> None:
         response = client.get("/api/v1/personalization/scientist-resonance?language=zh")
 
     assert response.status_code == 200
-    assert response.json()["long_term"]["slug"] == "ramanujan"
+    assert response.json()["long_term"]["primary"]["slug"] == "ramanujan"
+    assert response.json()["long_term"]["secondary"][0]["slug"] == "turing"
 
 
 def test_regenerate_scientist_resonance(monkeypatch) -> None:
@@ -104,7 +111,10 @@ def test_regenerate_scientist_resonance(monkeypatch) -> None:
         async def regenerate(self, language="zh", mode="both"):
             assert mode == "recent_state"
             return {
-                "long_term": {"slug": "turing", "name": "Alan Turing"},
+                "long_term": {
+                    "primary": {"slug": "turing", "name": "Alan Turing"},
+                    "secondary": [],
+                },
                 "recent_state": {"slug": "feynman", "name": "Richard Feynman"},
             }
 

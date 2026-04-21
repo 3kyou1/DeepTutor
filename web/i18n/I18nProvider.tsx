@@ -12,13 +12,11 @@ export function I18nProvider({
   language: AppLanguage | string;
   children: React.ReactNode;
 }) {
-  // Ensure initialized on client once
-  initI18n(language);
-
   useEffect(() => {
+    initI18n();
     const nextLang = normalizeLanguage(language);
     if (i18n.language !== nextLang) {
-      i18n.changeLanguage(nextLang);
+      void i18n.changeLanguage(nextLang);
     }
 
     // Keep <html lang="..."> in sync for accessibility & Intl defaults

@@ -13,15 +13,15 @@ export function normalizeLanguage(lang: unknown): AppLanguage {
   return "en";
 }
 
-let _initialized = false;
+const resources: Resource = {
+  en: { app: enApp },
+  zh: { app: zhApp },
+};
+
+let _initialized = i18n.isInitialized;
 
 export function initI18n(language?: unknown) {
   if (_initialized) return i18n;
-
-  const resources: Resource = {
-    en: { app: enApp },
-    zh: { app: zhApp },
-  };
 
   i18n.use(initReactI18next).init({
     resources,
@@ -42,3 +42,5 @@ export function initI18n(language?: unknown) {
   _initialized = true;
   return i18n;
 }
+
+initI18n("en");
