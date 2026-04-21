@@ -107,6 +107,9 @@ class MemoryService:
     def read_profile(self) -> str:
         return self.read_file("profile")
 
+    def read_copa_section(self) -> str:
+        return _extract_named_h2_section(self.read_profile(), "CoPA Factors")
+
     def _file_updated_at(self, which: MemoryFile) -> str | None:
         path = self._path(which)
         if not path.exists():
@@ -140,6 +143,11 @@ class MemoryService:
     def write_memory(self, content: str) -> MemorySnapshot:
         """Legacy compat: write to profile (primary editable file)."""
         return self.write_file("profile", content)
+
+    def write_copa_section(self, content: str) -> MemorySnapshot:
+        profile = self.read_profile()
+        updated = _replace_named_h2_section(profile, "CoPA Factors", content)
+        return self.write_file("profile", updated)
 
     def clear_file(self, which: MemoryFile) -> MemorySnapshot:
         return self.write_file(which, "")
@@ -292,6 +300,13 @@ class MemoryService:
         if not raw or raw == _NO_CHANGE:
             return False
 
+        if which == "profile":
+            raw = _preserve_named_h2_section(
+                original=current,
+                rewritten=raw,
+                section_name="CoPA Factors",
+            )
+
         if raw == current:
             return False
 
@@ -372,6 +387,52 @@ def _strip_code_fence(content: str) -> str:
         cleaned = re.sub(r"^```[a-zA-Z0-9_-]*\n?", "", cleaned)
         cleaned = re.sub(r"\n?```$", "", cleaned)
     return cleaned.strip()
+
+
+def _normalize_newlines(content: str) -> str:
+    return str(content or "").replace("\r\n", "\n").strip()
+
+
+def _section_pattern(section_name: str) -> re.Pattern[str]:
+    escaped = re.escape(section_name)
+    return re.compile(
+        rf"(^##\s*{escaped}\s*$.*?)(?=^\#\#\s+|\Z)",
+        flags=re.MULTILINE | re.DOTALL,
+    )
+
+
+def _extract_named_h2_section(content: str, section_name: str) -> str:
+    text = _normalize_newlines(content)
+    if not text:
+        return ""
+    match = _section_pattern(section_name).search(text)
+    return match.group(1).strip() if match else ""
+
+
+def _replace_named_h2_section(content: str, section_name: str, replacement: str) -> str:
+    text = _normalize_newlines(content)
+    normalized_replacement = _normalize_newlines(replacement)
+    pattern = _section_pattern(section_name)
+
+    if pattern.search(text):
+        if not normalized_replacement:
+            updated = pattern.sub("", text).strip()
+        else:
+            updated = pattern.sub(normalized_replacement, text).strip()
+        return re.sub(r"\n{3,}", "\n\n", updated).strip()
+
+    if not normalized_replacement:
+        return text
+    if not text:
+        return normalized_replacement
+    return f"{text}\n\n{normalized_replacement}".strip()
+
+
+def _preserve_named_h2_section(original: str, rewritten: str, section_name: str) -> str:
+    preserved = _extract_named_h2_section(original, section_name)
+    if not preserved:
+        return _normalize_newlines(rewritten)
+    return _replace_named_h2_section(rewritten, section_name, preserved)
 
 
 _memory_service: MemoryService | None = None

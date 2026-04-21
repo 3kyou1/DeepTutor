@@ -536,6 +536,7 @@ class TurnRuntimeManager:
             from deeptutor.agents.notebook import NotebookAnalysisAgent
             from deeptutor.services.memory import get_memory_service
             from deeptutor.services.notebook import notebook_manager
+            from deeptutor.services.personalization import get_copa_profile_service
             from deeptutor.services.llm.config import get_llm_config
             from deeptutor.services.session.context_builder import ContextBuilder
             from deeptutor.services.skill import get_skill_service
@@ -589,6 +590,7 @@ class TurnRuntimeManager:
                 on_event=lambda event: self._persist_and_publish(execution, event),
             )
             memory_service = get_memory_service()
+            copa_profile_service = get_copa_profile_service()
             memory_context = memory_service.build_memory_context()
 
             skill_service = get_skill_service()
@@ -776,6 +778,12 @@ class TurnRuntimeManager:
                     )
                 except Exception:
                     logger.debug("Failed to refresh lightweight memory", exc_info=True)
+                try:
+                    await copa_profile_service.refresh_profile(
+                        language=str(payload.get("language", "en") or "en"),
+                    )
+                except Exception:
+                    logger.debug("Failed to refresh CoPA profile", exc_info=True)
         except asyncio.CancelledError:
             await self.store.update_turn_status(turn_id, "cancelled", "Turn cancelled")
             await self._persist_and_publish(

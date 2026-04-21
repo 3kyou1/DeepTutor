@@ -373,3 +373,83 @@ async def test_turn_runtime_injects_memory_and_refreshes_after_completion(
     assert captured["conversation_history"] == []
     assert captured["conversation_context_text"] == "Recent chat summary"
     assert refresh_calls[0]["assistant_message"] == "Stored reply"
+
+
+@pytest.mark.asyncio
+async def test_turn_runtime_refreshes_copa_profile_after_threshold(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    store = SQLiteSessionStore(tmp_path / "chat_history.db")
+    runtime = TurnRuntimeManager(store)
+    copa_calls: list[dict[str, object]] = []
+
+    class FakeContextBuilder:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        async def build(self, **_kwargs):
+            return SimpleNamespace(
+                conversation_history=[],
+                conversation_summary="",
+                context_text="",
+                token_count=0,
+                budget=0,
+            )
+
+    class FakeOrchestrator:
+        async def handle(self, _context):
+            yield StreamEvent(
+                type=StreamEventType.CONTENT,
+                source="chat",
+                stage="responding",
+                content="Stored reply",
+                metadata={"call_kind": "llm_final_response"},
+            )
+            yield StreamEvent(type=StreamEventType.DONE, source="chat")
+
+    async def fake_refresh_from_turn(**_kwargs):
+        return None
+
+    async def fake_refresh_profile(**kwargs):
+        copa_calls.append(kwargs)
+        return SimpleNamespace(refreshed=True)
+
+    monkeypatch.setattr("deeptutor.services.llm.config.get_llm_config", lambda: SimpleNamespace())
+    monkeypatch.setattr("deeptutor.services.session.context_builder.ContextBuilder", FakeContextBuilder)
+    monkeypatch.setattr("deeptutor.runtime.orchestrator.ChatOrchestrator", FakeOrchestrator)
+    monkeypatch.setattr(
+        "deeptutor.services.memory.get_memory_service",
+        lambda: SimpleNamespace(
+            build_memory_context=lambda: "",
+            refresh_from_turn=fake_refresh_from_turn,
+        ),
+    )
+    monkeypatch.setattr(
+        "deeptutor.services.personalization.get_copa_profile_service",
+        lambda: SimpleNamespace(refresh_profile=fake_refresh_profile),
+    )
+
+    session = await store.create_session(session_id="s1")
+    for idx in range(14):
+        await store.add_message(session["id"], role="user", content=f"history {idx}")
+
+    _session, turn = await runtime.start_turn(
+        {
+            "type": "start_turn",
+            "content": "the threshold-crossing message",
+            "session_id": session["id"],
+            "capability": "chat",
+            "tools": [],
+            "knowledge_bases": [],
+            "attachments": [],
+            "language": "zh",
+            "config": {},
+        }
+    )
+
+    async for _event in runtime.subscribe_turn(turn["id"], after_seq=0):
+        pass
+
+    assert len(copa_calls) == 1
+    assert copa_calls[0]["language"] == "zh"

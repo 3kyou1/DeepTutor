@@ -1,5 +1,9 @@
 # DeepTutor — Agent-Native Architecture
 
+## Documentation Rule
+
+All newly created or updated project documents should be written in Chinese unless the user explicitly requests another language.
+
 ## Overview
 
 DeepTutor is an **agent-native** intelligent learning companion built around

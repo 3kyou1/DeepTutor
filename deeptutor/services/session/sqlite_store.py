@@ -689,6 +689,31 @@ class SQLiteSessionStore:
     async def get_messages_for_context(self, session_id: str) -> list[dict[str, Any]]:
         return await self._run(self._get_messages_for_context_sync, session_id)
 
+    def _list_global_raw_user_messages_sync(self) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, session_id, role, content, capability, created_at
+                FROM messages
+                WHERE role = 'user'
+                ORDER BY created_at ASC, id ASC
+                """
+            ).fetchall()
+        return [
+            {
+                "id": row["id"],
+                "session_id": row["session_id"],
+                "role": row["role"],
+                "content": row["content"] or "",
+                "capability": row["capability"] or "",
+                "created_at": row["created_at"],
+            }
+            for row in rows
+        ]
+
+    async def list_global_raw_user_messages(self) -> list[dict[str, Any]]:
+        return await self._run(self._list_global_raw_user_messages_sync)
+
     def _list_sessions_sync(self, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
         with self._connect() as conn:
             rows = conn.execute(

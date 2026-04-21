@@ -225,6 +225,9 @@ class PathService:
                         shutil.copy2(f, target)
         return new_dir
 
+    def get_copa_state_file(self) -> Path:
+        return self.get_user_root() / "memory" / "copa_state.json"
+
     def get_solve_dir(self) -> Path:
         return self.get_chat_feature_dir("deep_solve")
 

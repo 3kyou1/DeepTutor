@@ -345,6 +345,94 @@ class TestRegenerateLastTurn:
         # Memory refresh must NOT have been called a second time.
         assert len(refresh_calls) == 1
 
+    @pytest.mark.asyncio
+    async def test_regenerate_does_not_trigger_copa_refresh(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        store = SQLiteSessionStore(tmp_path / "regen_copa.db")
+        runtime = TurnRuntimeManager(store)
+
+        class FakeContextBuilder:
+            def __init__(self, *_args, **_kwargs) -> None:
+                pass
+
+            async def build(self, **_kwargs):
+                return SimpleNamespace(
+                    conversation_history=[],
+                    conversation_summary="",
+                    context_text="",
+                    token_count=0,
+                    budget=0,
+                )
+
+        responses = iter(["original answer", "regenerated answer"])
+
+        class FakeOrchestrator:
+            async def handle(self, _context):
+                yield StreamEvent(
+                    type=StreamEventType.CONTENT,
+                    source="chat",
+                    stage="responding",
+                    content=next(responses),
+                    metadata={"call_kind": "llm_final_response"},
+                )
+                yield StreamEvent(type=StreamEventType.DONE, source="chat")
+
+        async def tracking_refresh(**_kwargs):
+            return None
+
+        copa_calls: list[dict[str, Any]] = []
+
+        async def tracking_copa_refresh(**kwargs):
+            copa_calls.append(kwargs)
+            return None
+
+        monkeypatch.setattr(
+            "deeptutor.services.llm.config.get_llm_config", lambda: SimpleNamespace()
+        )
+        monkeypatch.setattr(
+            "deeptutor.services.session.context_builder.ContextBuilder",
+            FakeContextBuilder,
+        )
+        monkeypatch.setattr("deeptutor.runtime.orchestrator.ChatOrchestrator", FakeOrchestrator)
+        monkeypatch.setattr(
+            "deeptutor.services.memory.get_memory_service",
+            lambda: SimpleNamespace(
+                build_memory_context=lambda: "",
+                refresh_from_turn=tracking_refresh,
+            ),
+        )
+        monkeypatch.setattr(
+            "deeptutor.services.personalization.get_copa_profile_service",
+            lambda: SimpleNamespace(refresh_profile=tracking_copa_refresh),
+        )
+
+        session, first_turn = await runtime.start_turn(
+            {
+                "type": "start_turn",
+                "content": "what is 2+2?",
+                "session_id": None,
+                "capability": "chat",
+                "tools": [],
+                "knowledge_bases": [],
+                "attachments": [],
+                "language": "en",
+                "config": {},
+            }
+        )
+        async for _ in runtime.subscribe_turn(first_turn["id"], after_seq=0):
+            pass
+
+        assert len(copa_calls) == 1
+
+        _, regen_turn = await runtime.regenerate_last_turn(session["id"])
+        async for _ in runtime.subscribe_turn(regen_turn["id"], after_seq=0):
+            pass
+
+        assert len(copa_calls) == 1
+
     def test_overrides_take_precedence(self, store: SQLiteSessionStore) -> None:
         sid, _, _ = _seed_session(store)
         runtime = TurnRuntimeManager(store=store)

@@ -1,18 +1,31 @@
 import type { Metadata } from "next";
-import { Plus_Jakarta_Sans, Lora } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import ThemeScript from "@/components/ThemeScript";
 import { AppShellProvider } from "@/context/AppShellContext";
 import { I18nClientBridge } from "@/i18n/I18nClientBridge";
 
-const fontSans = Plus_Jakarta_Sans({
-  subsets: ["latin"],
+const fontSans = localFont({
+  src: [
+    { path: "../public/fonts/LDIbaomQNQcsA88c7O9yZ4KMCoOg4IA6-91aHEjcWuA_KU7NSg.ttf", weight: "200", style: "normal" },
+    { path: "../public/fonts/LDIbaomQNQcsA88c7O9yZ4KMCoOg4IA6-91aHEjcWuA_907NSg.ttf", weight: "300", style: "normal" },
+    { path: "../public/fonts/LDIbaomQNQcsA88c7O9yZ4KMCoOg4IA6-91aHEjcWuA_qU7NSg.ttf", weight: "400", style: "normal" },
+    { path: "../public/fonts/LDIbaomQNQcsA88c7O9yZ4KMCoOg4IA6-91aHEjcWuA_m07NSg.ttf", weight: "500", style: "normal" },
+    { path: "../public/fonts/LDIbaomQNQcsA88c7O9yZ4KMCoOg4IA6-91aHEjcWuA_d0nNSg.ttf", weight: "600", style: "normal" },
+    { path: "../public/fonts/LDIbaomQNQcsA88c7O9yZ4KMCoOg4IA6-91aHEjcWuA_TknNSg.ttf", weight: "700", style: "normal" },
+    { path: "../public/fonts/LDIbaomQNQcsA88c7O9yZ4KMCoOg4IA6-91aHEjcWuA_KUnNSg.ttf", weight: "800", style: "normal" },
+  ],
   display: "swap",
   variable: "--font-sans",
 });
 
-const fontSerif = Lora({
-  subsets: ["latin"],
+const fontSerif = localFont({
+  src: [
+    { path: "../public/fonts/0QI6MX1D_JOuGQbT0gvTJPa787weuyJG.ttf", weight: "400", style: "normal" },
+    { path: "../public/fonts/0QI6MX1D_JOuGQbT0gvTJPa787wsuyJG.ttf", weight: "500", style: "normal" },
+    { path: "../public/fonts/0QI6MX1D_JOuGQbT0gvTJPa787zAvCJG.ttf", weight: "600", style: "normal" },
+    { path: "../public/fonts/0QI6MX1D_JOuGQbT0gvTJPa787z5vCJG.ttf", weight: "700", style: "normal" },
+  ],
   display: "swap",
   variable: "--font-serif",
 });
