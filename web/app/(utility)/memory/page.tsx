@@ -6,8 +6,15 @@ import { Brain, Eraser, Loader2, RefreshCw, Save, BookOpen, User } from "lucide-
 import { useTranslation } from "react-i18next";
 import { useAppShell } from "@/context/AppShellContext";
 import { apiUrl } from "@/lib/api";
+import {
+  getColdStartStatus,
+  type ColdStartStatus,
+} from "@/lib/personalization-api";
 
 const MarkdownRenderer = dynamic(() => import("@/components/common/MarkdownRenderer"), {
+  ssr: false,
+});
+const CopaColdStartModal = dynamic(() => import("@/components/memory/CopaColdStartModal"), {
   ssr: false,
 });
 
@@ -44,6 +51,15 @@ const EMPTY: MemoryData = {
   profile_updated_at: null,
 };
 
+const EMPTY_COLD_START_STATUS: ColdStartStatus = {
+  profile_source: null,
+  has_cold_start_profile: false,
+  live_rebuild_threshold: 15,
+  real_user_messages: 0,
+  completed_at: null,
+  can_reinitialize: true,
+};
+
 function formatUpdatedAt(value: string | null): string {
   if (!value) return "Not updated yet";
   const date = new Date(value);
@@ -63,6 +79,8 @@ export default function MemoryPage() {
   const [activeView, setActiveView] = useState<"edit" | "preview">("edit");
   const [editors, setEditors] = useState<Record<MemoryFile, string>>({ summary: "", profile: "" });
   const [toast, setToast] = useState("");
+  const [coldStartStatus, setColdStartStatus] = useState<ColdStartStatus>(EMPTY_COLD_START_STATUS);
+  const [showColdStartModal, setShowColdStartModal] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const tab = TABS.find((t) => t.key === activeTab)!;
@@ -88,7 +106,19 @@ export default function MemoryPage() {
     }
   }, []);
 
-  useEffect(() => { void loadMemory(); }, [loadMemory]);
+  const loadColdStart = useCallback(async () => {
+    try {
+      const status = await getColdStartStatus();
+      setColdStartStatus(status);
+    } catch {
+      setColdStartStatus(EMPTY_COLD_START_STATUS);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadMemory();
+    void loadColdStart();
+  }, [loadColdStart, loadMemory]);
 
   const saveMemory = useCallback(async () => {
     setSaving(true);
@@ -152,6 +182,35 @@ export default function MemoryPage() {
     [saveMemory],
   );
 
+  const coldStartEntryLabel =
+    coldStartStatus.profile_source === "live"
+      ? t("copa_cold_start.entry.regenerate")
+      : coldStartStatus.has_cold_start_profile
+      ? t("copa_cold_start.entry.reinitialize")
+      : t("copa_cold_start.entry.initialize");
+
+  const coldStartStatusLabel =
+    coldStartStatus.profile_source === "live"
+      ? t("copa_cold_start.status.live")
+      : coldStartStatus.profile_source === "cold_start"
+      ? t("copa_cold_start.status.cold_start")
+      : t("copa_cold_start.status.empty");
+
+  const openColdStartModal = useCallback(() => {
+    if (coldStartStatus.profile_source === "cold_start") {
+      if (!window.confirm(t("copa_cold_start.confirm.overwrite_cold_start"))) return;
+    }
+    if (coldStartStatus.profile_source === "live") {
+      if (!window.confirm(t("copa_cold_start.confirm.overwrite_live"))) return;
+    }
+    setShowColdStartModal(true);
+  }, [coldStartStatus.profile_source, t]);
+
+  const handleColdStartSubmitted = useCallback(async () => {
+    await Promise.all([loadMemory(), loadColdStart()]);
+    setToast(t("copa_cold_start.toast.success"));
+  }, [loadColdStart, loadMemory, t]);
+
   return (
     <div className="h-full overflow-y-auto [scrollbar-gutter:stable]">
       <div className="mx-auto max-w-[960px] px-6 py-8">
@@ -177,7 +236,7 @@ export default function MemoryPage() {
               className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)]/50 px-3 py-1.5 text-[12px] font-medium text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)] disabled:opacity-40"
             >
               {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-              Save
+              {t("Save")}
             </button>
             <button
               onClick={refreshMemory}
@@ -185,7 +244,7 @@ export default function MemoryPage() {
               className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)]/50 px-3 py-1.5 text-[12px] font-medium text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)] disabled:opacity-40"
             >
               {refreshing ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-              Refresh
+              {t("Refresh")}
             </button>
             <button
               onClick={clearMemory}
@@ -193,7 +252,7 @@ export default function MemoryPage() {
               className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)]/50 px-3 py-1.5 text-[12px] font-medium text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)] disabled:opacity-40"
             >
               {clearing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Eraser className="h-3 w-3" />}
-              Clear
+              {t("Clear")}
             </button>
           </div>
         </div>
@@ -222,7 +281,31 @@ export default function MemoryPage() {
 
         {/* Meta & View toggle */}
         <div className="mb-6 flex items-center justify-between">
-          <p className="max-w-lg text-[12px] text-[var(--muted-foreground)]">{tab.hint}</p>
+          <div className="max-w-lg">
+            <p className="text-[12px] text-[var(--muted-foreground)]">{tab.hint}</p>
+            {activeTab === "profile" ? (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={openColdStartModal}
+                  className="rounded-lg border border-[var(--border)]/70 px-3 py-1.5 text-[12px] font-medium text-[var(--foreground)] transition-colors hover:border-[var(--border)]"
+                >
+                  {coldStartEntryLabel}
+                </button>
+                <span className="rounded-full bg-[var(--muted)] px-2.5 py-1 text-[11px] text-[var(--muted-foreground)]">
+                  {coldStartStatusLabel}
+                </span>
+                <span className="text-[11px] text-[var(--muted-foreground)]">
+                  {coldStartStatus.real_user_messages}/{coldStartStatus.live_rebuild_threshold}
+                </span>
+              </div>
+            ) : null}
+            {activeTab === "profile" && coldStartStatus.profile_source === "live" ? (
+              <p className="mt-2 text-[11px] text-[var(--muted-foreground)]">
+                {t("copa_cold_start.live_notice")}
+              </p>
+            ) : null}
+          </div>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1">
               {(["edit", "preview"] as const).map((v) => (
@@ -235,12 +318,12 @@ export default function MemoryPage() {
                       : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
                   }`}
                 >
-                  {v === "edit" ? "Edit" : "Preview"}
+                  {v === "edit" ? t("Edit") : t("Preview")}
                 </button>
               ))}
             </div>
             <span className="text-[12px] text-[var(--muted-foreground)]">
-              Updated: {formatUpdatedAt(updatedAt)}
+              {t("Updated")}: {formatUpdatedAt(updatedAt)}
             </span>
           </div>
         </div>
@@ -274,13 +357,21 @@ export default function MemoryPage() {
             <div className="mb-3 rounded-xl bg-[var(--muted)] p-2.5 text-[var(--muted-foreground)]">
               <Brain size={18} />
             </div>
-            <p className="text-[14px] font-medium text-[var(--foreground)]">No {tab.label.toLowerCase()} yet</p>
+            <p className="text-[14px] font-medium text-[var(--foreground)]">
+              {t("memory.empty", { label: tab.label.toLowerCase() })}
+            </p>
             <p className="mt-1.5 max-w-xs text-[13px] text-[var(--muted-foreground)]">
               {t("Refresh from a session or write directly in the editor.")}
             </p>
           </div>
         )}
       </div>
+      <CopaColdStartModal
+        isOpen={showColdStartModal}
+        language={language}
+        onClose={() => setShowColdStartModal(false)}
+        onSubmitted={handleColdStartSubmitted}
+      />
     </div>
   );
 }

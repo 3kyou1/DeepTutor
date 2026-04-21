@@ -9,6 +9,7 @@
 data/
 run_code_workspace/
 deeptutor/agents/question/reference_papers/
+.worktrees/
 deeptutor/services/rag/eg_only_for_analysis/
 docs/
 .github

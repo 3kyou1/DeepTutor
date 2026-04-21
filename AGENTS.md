@@ -4,6 +4,10 @@
 
 All newly created or updated project documents should be written in Chinese unless the user explicitly requests another language.
 
+## Environment Rule
+
+Default to using the project's Conda virtual environment when running Python commands, tests, or dependency-related setup, unless the user explicitly requests another environment.
+
 ## Overview
 
 DeepTutor is an **agent-native** intelligent learning companion built around

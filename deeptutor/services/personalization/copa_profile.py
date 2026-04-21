@@ -274,6 +274,9 @@ class CoPAProfileService:
                 "messages_consumed": 0,
                 "refresh_threshold": REFRESH_THRESHOLD,
                 "last_updated_at": None,
+                "profile_source": None,
+                "live_rebuild_threshold": REFRESH_THRESHOLD,
+                "cold_start": None,
             }
         try:
             payload = json.loads(self._state_path.read_text(encoding="utf-8"))
@@ -283,9 +286,22 @@ class CoPAProfileService:
             "messages_consumed": int(payload.get("messages_consumed") or 0),
             "refresh_threshold": int(payload.get("refresh_threshold") or REFRESH_THRESHOLD),
             "last_updated_at": payload.get("last_updated_at"),
+            "profile_source": payload.get("profile_source"),
+            "live_rebuild_threshold": int(
+                payload.get("live_rebuild_threshold") or REFRESH_THRESHOLD
+            ),
+            "cold_start": payload.get("cold_start") if isinstance(payload.get("cold_start"), dict) else None,
         }
 
-    def _write_state(self, *, messages_consumed: int, threshold: int) -> None:
+    def _write_state(
+        self,
+        *,
+        messages_consumed: int,
+        threshold: int,
+        profile_source: str | None = None,
+        live_rebuild_threshold: int | None = None,
+        cold_start: dict[str, Any] | None = None,
+    ) -> None:
         self._state_path.parent.mkdir(parents=True, exist_ok=True)
         self._state_path.write_text(
             json.dumps(
@@ -293,6 +309,11 @@ class CoPAProfileService:
                     "messages_consumed": int(messages_consumed),
                     "refresh_threshold": int(threshold),
                     "last_updated_at": datetime.now().astimezone().isoformat(),
+                    "profile_source": profile_source,
+                    "live_rebuild_threshold": int(
+                        live_rebuild_threshold or REFRESH_THRESHOLD
+                    ),
+                    "cold_start": cold_start,
                 },
                 ensure_ascii=False,
                 indent=2,
@@ -306,17 +327,30 @@ class CoPAProfileService:
         state = self._read_state()
         consumed = int(state["messages_consumed"])
         threshold = int(state["refresh_threshold"])
+        profile_source = str(state.get("profile_source") or "").strip() or None
+        live_rebuild_threshold = int(state.get("live_rebuild_threshold") or threshold)
+        cold_start = state.get("cold_start") if isinstance(state.get("cold_start"), dict) else None
         total = len(raw_messages)
 
-        if not should_refresh(total, consumed, threshold):
-            return CoPARefreshResult(
-                refreshed=False,
-                total_messages=total,
-                consumed_messages=consumed,
-            )
+        if profile_source == "cold_start":
+            if total < live_rebuild_threshold:
+                return CoPARefreshResult(
+                    refreshed=False,
+                    total_messages=total,
+                    consumed_messages=consumed,
+                )
+            pending_messages = [row["content"] for row in raw_messages[-live_rebuild_threshold:]]
+            existing_profile = ""
+        else:
+            if not should_refresh(total, consumed, threshold):
+                return CoPARefreshResult(
+                    refreshed=False,
+                    total_messages=total,
+                    consumed_messages=consumed,
+                )
+            pending_messages = [row["content"] for row in raw_messages[consumed:]]
+            existing_profile = self._memory_service.read_copa_section()
 
-        pending_messages = [row["content"] for row in raw_messages[consumed:]]
-        existing_profile = self._memory_service.read_copa_section()
         inferred = await infer_copa_profile(
             pending_messages,
             existing_copa_profile=existing_profile,
@@ -324,7 +358,13 @@ class CoPAProfileService:
         )
         markdown = render_copa_markdown(inferred)
         self._memory_service.write_copa_section(markdown)
-        self._write_state(messages_consumed=total, threshold=threshold)
+        self._write_state(
+            messages_consumed=total,
+            threshold=threshold,
+            profile_source="live",
+            live_rebuild_threshold=live_rebuild_threshold,
+            cold_start=cold_start,
+        )
         return CoPARefreshResult(
             refreshed=True,
             total_messages=total,

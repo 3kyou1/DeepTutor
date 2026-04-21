@@ -257,3 +257,80 @@ def test_build_memory_context_includes_copa_factors_from_profile(tmp_path: Path)
 
     assert "CoPA Factors" in context
     assert "Prompt Summary" in context
+
+
+@pytest.mark.asyncio
+async def test_refresh_profile_rebuilds_live_after_cold_start_threshold(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    store: SQLiteSessionStore,
+) -> None:
+    from deeptutor.services.personalization.copa_profile import CoPAProfileService
+
+    async def fake_infer(
+        new_raw_user_messages: list[str],
+        *,
+        existing_copa_profile: str = "",
+        language: str = "zh",
+    ) -> dict[str, object]:
+        assert existing_copa_profile == ""
+        assert len(new_raw_user_messages) == 15
+        return {
+            "factors": {
+                code: {
+                    "user_profile_description": f"{code} from live messages",
+                    "response_strategy": [f"{code} live strategy"],
+                }
+                for code in ("CT", "SA", "SC", "CLM", "MS", "AMR")
+            }
+        }
+
+    monkeypatch.setattr(
+        "deeptutor.services.personalization.copa_profile.infer_copa_profile",
+        fake_infer,
+    )
+
+    await store.create_session(session_id="s1")
+    for idx in range(15):
+        await store.add_message(session_id="s1", role="user", content=f"user message {idx}")
+
+    memory_service = make_memory_service(
+        tmp_path,
+        store=store,
+        profile_text="## CoPA Factors\n旧冷启动画像",
+    )
+    state_path = _PathServiceStub(tmp_path).get_copa_state_file()
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(
+        json.dumps(
+            {
+                "messages_consumed": 1,
+                "refresh_threshold": 15,
+                "last_updated_at": "2026-04-21T12:00:00+08:00",
+                "profile_source": "cold_start",
+                "live_rebuild_threshold": 15,
+                "cold_start": {
+                    "version": "v1",
+                    "completed_at": "2026-04-21T12:00:00+08:00",
+                    "answers": {"CT_1": 4},
+                    "factor_scores": {"CT": 4.0},
+                },
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    service = CoPAProfileService(
+        path_service=_PathServiceStub(tmp_path),
+        store=store,
+        memory_service=memory_service,
+    )
+
+    result = await service.refresh_profile(language="zh")
+
+    assert result.refreshed is True
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    assert state["profile_source"] == "live"
+    assert state["messages_consumed"] == 15
+    assert "CT from live messages" in memory_service.read_profile()
