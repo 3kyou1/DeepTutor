@@ -8,13 +8,23 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from deeptutor.services.llm import complete
+from deeptutor.services.config import get_env_store
+from deeptutor.services.llm import complete, get_llm_config
+from deeptutor.services.llm.config import LLMConfig
 from deeptutor.services.memory import MemoryService, get_memory_service
 from deeptutor.services.session.sqlite_store import SQLiteSessionStore, get_sqlite_session_store
 
 RECENT_WINDOW = 12
 RECENT_MIN_MESSAGES = 4
 PORTRAIT_PREFIX = "/scientist-portraits"
+SCIENTIST_RESONANCE_ENV_KEYS = {
+    "binding": "SCIENTIST_RESONANCE_LLM_BINDING",
+    "model": "SCIENTIST_RESONANCE_LLM_MODEL",
+    "api_key": "SCIENTIST_RESONANCE_LLM_API_KEY",
+    "host": "SCIENTIST_RESONANCE_LLM_HOST",
+    "api_version": "SCIENTIST_RESONANCE_LLM_API_VERSION",
+    "reasoning_effort": "SCIENTIST_RESONANCE_REASONING_EFFORT",
+}
 
 
 @dataclass(frozen=True)
@@ -86,6 +96,43 @@ def _strip_code_fence(content: str) -> str:
             lines = lines[:-1]
         text = "\n".join(lines).strip()
     return text
+
+
+def _strip_env_value(value: str) -> str:
+    return str(value or "").strip().strip("\"'")
+
+
+def get_scientist_resonance_llm_config() -> LLMConfig:
+    base_config = get_llm_config()
+    env_store = get_env_store()
+
+    binding = _strip_env_value(env_store.get(SCIENTIST_RESONANCE_ENV_KEYS["binding"]))
+    model = _strip_env_value(env_store.get(SCIENTIST_RESONANCE_ENV_KEYS["model"]))
+    api_key = _strip_env_value(env_store.get(SCIENTIST_RESONANCE_ENV_KEYS["api_key"]))
+    host = _strip_env_value(env_store.get(SCIENTIST_RESONANCE_ENV_KEYS["host"]))
+    api_version = _strip_env_value(env_store.get(SCIENTIST_RESONANCE_ENV_KEYS["api_version"]))
+    reasoning_effort = _strip_env_value(
+        env_store.get(SCIENTIST_RESONANCE_ENV_KEYS["reasoning_effort"])
+    )
+
+    updates: dict[str, Any] = {}
+    if binding:
+        updates["binding"] = binding
+    if model:
+        updates["model"] = model
+    if api_key:
+        updates["api_key"] = api_key
+    if host:
+        updates["base_url"] = host
+        updates["effective_url"] = host
+    if api_version:
+        updates["api_version"] = api_version
+    if reasoning_effort:
+        updates["reasoning_effort"] = reasoning_effort
+
+    if not updates:
+        return base_config
+    return base_config.model_copy(updates)
 
 
 def _clean_profile_text(profile_text: str) -> str:
@@ -194,6 +241,7 @@ async def infer_scientist_resonance(
     scientist_pool = [item.pool_payload() for item in pool.values()]
     signal_text = _collect_signal_text(profile_text, recent_messages)
     allow_recent = len(recent_messages) >= RECENT_MIN_MESSAGES
+    llm_config = get_scientist_resonance_llm_config()
 
     if str(language or "").lower().startswith("zh"):
         system_prompt = (
@@ -244,6 +292,13 @@ async def infer_scientist_resonance(
     raw = await complete(
         prompt=user_prompt,
         system_prompt=system_prompt,
+        model=llm_config.model,
+        api_key=llm_config.api_key,
+        base_url=llm_config.effective_url or llm_config.base_url,
+        api_version=llm_config.api_version,
+        binding=llm_config.binding,
+        reasoning_effort=llm_config.reasoning_effort,
+        extra_headers=llm_config.extra_headers,
         temperature=0.3,
         max_tokens=1600,
     )
@@ -311,6 +366,7 @@ def get_scientist_resonance_service() -> ScientistResonanceService:
 __all__ = [
     "ScientistRecord",
     "ScientistResonanceService",
+    "get_scientist_resonance_llm_config",
     "get_scientist_resonance_service",
     "infer_scientist_resonance",
     "load_scientist_pool",

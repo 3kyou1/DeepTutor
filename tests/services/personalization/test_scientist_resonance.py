@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from deeptutor.services.llm.config import LLMConfig
 from deeptutor.services.memory.service import MemoryService
 from deeptutor.services.session.sqlite_store import SQLiteSessionStore
 
@@ -46,6 +47,125 @@ def test_load_scientist_pool_reads_extended_fields() -> None:
     assert pool["ramanujan"].core_traits
     assert pool["ramanujan"].thinking_style
     assert pool["ramanujan"].temperament_summary
+
+
+def test_get_scientist_resonance_llm_config_defaults_to_global(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from deeptutor.services.personalization import scientist_resonance as module
+
+    base_config = LLMConfig(
+        model="global-model",
+        api_key="global-key",
+        base_url="https://global.example/v1",
+        binding="openai",
+        api_version="2025-01-01",
+        reasoning_effort="medium",
+        extra_headers={"X-Test": "1"},
+    )
+
+    class _EnvStoreStub:
+        def get(self, key: str, default: str = "") -> str:
+            return default
+
+    monkeypatch.setattr(module, "get_llm_config", lambda: base_config)
+    monkeypatch.setattr(module, "get_env_store", lambda: _EnvStoreStub())
+
+    resolved = module.get_scientist_resonance_llm_config()
+
+    assert resolved.model == "global-model"
+    assert resolved.api_key == "global-key"
+    assert resolved.base_url == "https://global.example/v1"
+    assert resolved.binding == "openai"
+    assert resolved.api_version == "2025-01-01"
+    assert resolved.reasoning_effort == "medium"
+    assert resolved.extra_headers == {"X-Test": "1"}
+
+
+def test_get_scientist_resonance_llm_config_allows_partial_env_overrides(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from deeptutor.services.personalization import scientist_resonance as module
+
+    base_config = LLMConfig(
+        model="global-model",
+        api_key="global-key",
+        base_url="https://global.example/v1",
+        binding="openai",
+        api_version="2025-01-01",
+        reasoning_effort="medium",
+    )
+    env_values = {
+        "SCIENTIST_RESONANCE_LLM_MODEL": "resonance-model",
+        "SCIENTIST_RESONANCE_LLM_HOST": "https://resonance.example/v1",
+        "SCIENTIST_RESONANCE_REASONING_EFFORT": "high",
+    }
+
+    class _EnvStoreStub:
+        def get(self, key: str, default: str = "") -> str:
+            return env_values.get(key, default)
+
+    monkeypatch.setattr(module, "get_llm_config", lambda: base_config)
+    monkeypatch.setattr(module, "get_env_store", lambda: _EnvStoreStub())
+
+    resolved = module.get_scientist_resonance_llm_config()
+
+    assert resolved.model == "resonance-model"
+    assert resolved.base_url == "https://resonance.example/v1"
+    assert resolved.effective_url == "https://resonance.example/v1"
+    assert resolved.reasoning_effort == "high"
+    assert resolved.binding == "openai"
+    assert resolved.api_key == "global-key"
+
+
+@pytest.mark.asyncio
+async def test_infer_scientist_resonance_passes_dedicated_llm_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from deeptutor.services.personalization import scientist_resonance as module
+
+    llm_config = LLMConfig(
+        model="resonance-model",
+        api_key="resonance-key",
+        base_url="https://resonance.example/v1",
+        binding="custom",
+        api_version="2025-02-02",
+        reasoning_effort="high",
+        extra_headers={"X-Resonance": "1"},
+    )
+    captured: dict[str, object] = {}
+
+    async def fake_complete(*args, **kwargs):
+        captured.update(kwargs)
+        return json.dumps(
+            {
+                "long_term": {
+                    "slug": "ramanujan",
+                    "reason": "你会先抓模式，再补表达。",
+                    "resonance_axes": ["模式敏感", "直觉跳跃"],
+                },
+                "recent_state": None,
+            },
+            ensure_ascii=False,
+        )
+
+    monkeypatch.setattr(module, "get_scientist_resonance_llm_config", lambda: llm_config)
+    monkeypatch.setattr(module, "complete", fake_complete)
+
+    result = await module.infer_scientist_resonance(
+        profile_text="偏模式敏感",
+        recent_messages=["最近在反复比较不同解法"],
+        language="zh",
+    )
+
+    assert captured["model"] == "resonance-model"
+    assert captured["api_key"] == "resonance-key"
+    assert captured["base_url"] == "https://resonance.example/v1"
+    assert captured["binding"] == "custom"
+    assert captured["api_version"] == "2025-02-02"
+    assert captured["reasoning_effort"] == "high"
+    assert captured["extra_headers"] == {"X-Resonance": "1"}
+    assert result["long_term"]["slug"] == "ramanujan"
 
 
 @pytest.mark.asyncio

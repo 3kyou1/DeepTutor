@@ -148,3 +148,50 @@ def test_load_syncs_existing_active_profiles_from_env(tmp_path: Path, monkeypatc
     assert emb_model["model"] == "text-embedding-v4"
     assert emb_model["name"] == "text-embedding-v4"
     assert emb_model["dimension"] == "2048"
+
+
+def test_env_store_render_from_catalog_preserves_scientist_resonance_overrides(tmp_path: Path):
+    env_path = tmp_path / ".env"
+    env_path.write_text(
+        "\n".join(
+            [
+                "LLM_BINDING=openai",
+                "LLM_MODEL=global-model",
+                "LLM_API_KEY=global-key",
+                "LLM_HOST=https://global.example/v1",
+                "SCIENTIST_RESONANCE_LLM_MODEL=resonance-model",
+                "SCIENTIST_RESONANCE_REASONING_EFFORT=high",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    env_store = EnvStore(path=env_path)
+    catalog = {
+        "services": {
+            "llm": {
+                "active_profile_id": "llm-profile-default",
+                "active_model_id": "llm-model-default",
+                "profiles": [
+                    {
+                        "id": "llm-profile-default",
+                        "binding": "openai",
+                        "base_url": "https://new-global.example/v1",
+                        "api_key": "new-global-key",
+                        "api_version": "",
+                        "models": [
+                            {"id": "llm-model-default", "model": "new-global-model"}
+                        ],
+                    }
+                ],
+            },
+            "embedding": {"active_profile_id": None, "active_model_id": None, "profiles": []},
+            "search": {"active_profile_id": None, "profiles": []},
+        }
+    }
+
+    rendered = env_store.render_from_catalog(catalog)
+
+    assert rendered["LLM_MODEL"] == "new-global-model"
+    assert rendered["SCIENTIST_RESONANCE_LLM_MODEL"] == "resonance-model"
+    assert rendered["SCIENTIST_RESONANCE_REASONING_EFFORT"] == "high"

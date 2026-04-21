@@ -18,6 +18,12 @@ ENV_KEY_ORDER = (
     "LLM_API_KEY",
     "LLM_HOST",
     "LLM_API_VERSION",
+    "SCIENTIST_RESONANCE_LLM_BINDING",
+    "SCIENTIST_RESONANCE_LLM_MODEL",
+    "SCIENTIST_RESONANCE_LLM_API_KEY",
+    "SCIENTIST_RESONANCE_LLM_HOST",
+    "SCIENTIST_RESONANCE_LLM_API_VERSION",
+    "SCIENTIST_RESONANCE_REASONING_EFFORT",
     "EMBEDDING_BINDING",
     "EMBEDDING_MODEL",
     "EMBEDDING_API_KEY",
@@ -134,6 +140,7 @@ class EnvStore:
             os.environ[key] = value
 
     def render_from_draft(self, draft: dict[str, object]) -> dict[str, str]:
+        current = self.load()
         ports = draft.get("ports", {}) if isinstance(draft.get("ports"), dict) else {}
         llm = draft.get("llm", {}) if isinstance(draft.get("llm"), dict) else {}
         embedding = (
@@ -148,6 +155,16 @@ class EnvStore:
             "LLM_API_KEY": str(llm.get("api_key") or ""),
             "LLM_HOST": str(llm.get("host") or ""),
             "LLM_API_VERSION": str(llm.get("api_version") or ""),
+            "SCIENTIST_RESONANCE_LLM_BINDING": current.get("SCIENTIST_RESONANCE_LLM_BINDING", ""),
+            "SCIENTIST_RESONANCE_LLM_MODEL": current.get("SCIENTIST_RESONANCE_LLM_MODEL", ""),
+            "SCIENTIST_RESONANCE_LLM_API_KEY": current.get("SCIENTIST_RESONANCE_LLM_API_KEY", ""),
+            "SCIENTIST_RESONANCE_LLM_HOST": current.get("SCIENTIST_RESONANCE_LLM_HOST", ""),
+            "SCIENTIST_RESONANCE_LLM_API_VERSION": current.get(
+                "SCIENTIST_RESONANCE_LLM_API_VERSION", ""
+            ),
+            "SCIENTIST_RESONANCE_REASONING_EFFORT": current.get(
+                "SCIENTIST_RESONANCE_REASONING_EFFORT", ""
+            ),
             "EMBEDDING_BINDING": str(embedding.get("binding") or "openai"),
             "EMBEDDING_MODEL": str(embedding.get("model") or ""),
             "EMBEDDING_API_KEY": str(embedding.get("api_key") or ""),
@@ -181,6 +198,16 @@ class EnvStore:
             "LLM_API_KEY": str((llm_profile or {}).get("api_key") or ""),
             "LLM_HOST": str((llm_profile or {}).get("base_url") or ""),
             "LLM_API_VERSION": str((llm_profile or {}).get("api_version") or ""),
+            "SCIENTIST_RESONANCE_LLM_BINDING": current.get("SCIENTIST_RESONANCE_LLM_BINDING", ""),
+            "SCIENTIST_RESONANCE_LLM_MODEL": current.get("SCIENTIST_RESONANCE_LLM_MODEL", ""),
+            "SCIENTIST_RESONANCE_LLM_API_KEY": current.get("SCIENTIST_RESONANCE_LLM_API_KEY", ""),
+            "SCIENTIST_RESONANCE_LLM_HOST": current.get("SCIENTIST_RESONANCE_LLM_HOST", ""),
+            "SCIENTIST_RESONANCE_LLM_API_VERSION": current.get(
+                "SCIENTIST_RESONANCE_LLM_API_VERSION", ""
+            ),
+            "SCIENTIST_RESONANCE_REASONING_EFFORT": current.get(
+                "SCIENTIST_RESONANCE_REASONING_EFFORT", ""
+            ),
             "EMBEDDING_BINDING": str((embedding_profile or {}).get("binding") or "openai"),
             "EMBEDDING_MODEL": str((embedding_model or {}).get("model") or ""),
             "EMBEDDING_API_KEY": str((embedding_profile or {}).get("api_key") or ""),
