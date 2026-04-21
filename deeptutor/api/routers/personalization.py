@@ -6,7 +6,10 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from deeptutor.services.personalization import get_cold_start_service
+from deeptutor.services.personalization import (
+    get_cold_start_service,
+    get_scientist_resonance_service,
+)
 
 router = APIRouter()
 
@@ -14,6 +17,11 @@ router = APIRouter()
 class ColdStartSubmitRequest(BaseModel):
     language: str = "zh"
     answers: dict[str, int] = Field(default_factory=dict)
+
+
+class ScientistResonanceRegenerateRequest(BaseModel):
+    language: str = "zh"
+    mode: str = "both"
 
 
 async def _resolve(value: Any) -> Any:
@@ -48,3 +56,15 @@ async def submit_cold_start_answers(payload: ColdStartSubmitRequest):
             status_code=500,
             detail="failed_to_write_cold_start_profile",
         ) from exc
+
+
+@router.get("/scientist-resonance")
+async def get_scientist_resonance(language: str = Query(default="zh")):
+    service = get_scientist_resonance_service()
+    return await _resolve(service.get_resonance(language=language))
+
+
+@router.post("/scientist-resonance/regenerate")
+async def regenerate_scientist_resonance(payload: ScientistResonanceRegenerateRequest):
+    service = get_scientist_resonance_service()
+    return await _resolve(service.regenerate(language=payload.language, mode=payload.mode))

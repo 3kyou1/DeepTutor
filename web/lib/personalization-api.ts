@@ -35,6 +35,23 @@ export interface ColdStartSubmitResponse {
   profile_preview: string;
 }
 
+export interface ScientistResonanceCard {
+  name: string;
+  slug: string;
+  portrait_url: string;
+  hook: string;
+  quote_zh: string;
+  quote_en: string;
+  reason: string;
+  resonance_axes: string[];
+  confidence_style: "strong_resonance" | "phase_resonance";
+}
+
+export interface ScientistResonanceResponse {
+  long_term: ScientistResonanceCard | null;
+  recent_state: ScientistResonanceCard | null;
+}
+
 async function parseJsonOrThrow(response: Response) {
   if (response.ok) return response.json();
   let detail = "Request failed";
@@ -72,6 +89,26 @@ export async function submitColdStartAnswers(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ language, answers }),
+  });
+  return parseJsonOrThrow(response);
+}
+
+export async function getScientistResonance(language: string): Promise<ScientistResonanceResponse> {
+  const response = await fetch(
+    apiUrl(`/api/v1/personalization/scientist-resonance?language=${encodeURIComponent(language)}`),
+    { cache: "no-store" },
+  );
+  return parseJsonOrThrow(response);
+}
+
+export async function regenerateScientistResonance(
+  language: string,
+  mode: "long_term" | "recent_state" | "both" = "both",
+): Promise<ScientistResonanceResponse> {
+  const response = await fetch(apiUrl("/api/v1/personalization/scientist-resonance/regenerate"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ language, mode }),
   });
   return parseJsonOrThrow(response);
 }
