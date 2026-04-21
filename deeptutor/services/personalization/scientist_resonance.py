@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+import logging
 import re
 from dataclasses import dataclass
 from functools import lru_cache
@@ -17,6 +18,7 @@ from deeptutor.services.session.sqlite_store import SQLiteSessionStore, get_sqli
 RECENT_WINDOW = 12
 RECENT_MIN_MESSAGES = 4
 PORTRAIT_PREFIX = "/scientist-portraits"
+logger = logging.getLogger(__name__)
 SCIENTIST_RESONANCE_ENV_KEYS = {
     "binding": "SCIENTIST_RESONANCE_LLM_BINDING",
     "model": "SCIENTIST_RESONANCE_LLM_MODEL",
@@ -242,6 +244,14 @@ async def infer_scientist_resonance(
     signal_text = _collect_signal_text(profile_text, recent_messages)
     allow_recent = len(recent_messages) >= RECENT_MIN_MESSAGES
     llm_config = get_scientist_resonance_llm_config()
+    logger.info(
+        "Scientist Resonance requesting LLM: model=%s binding=%s base_url=%s recent_messages=%s allow_recent=%s",
+        llm_config.model,
+        llm_config.binding,
+        llm_config.effective_url or llm_config.base_url,
+        len(recent_messages),
+        allow_recent,
+    )
 
     if str(language or "").lower().startswith("zh"):
         system_prompt = (
@@ -302,6 +312,7 @@ async def infer_scientist_resonance(
         temperature=0.3,
         max_tokens=1600,
     )
+    logger.info("Scientist Resonance LLM returned payload (%s chars)", len(raw))
     parsed = json.loads(_strip_code_fence(raw))
     return {
         "long_term": _normalize_card_payload(parsed.get("long_term"), pool, confidence_style="strong_resonance"),
@@ -333,6 +344,10 @@ class ScientistResonanceService:
                 language=language,
             )
         except Exception:
+            logger.warning(
+                "Scientist Resonance LLM inference failed; falling back to heuristic match",
+                exc_info=True,
+            )
             result = {
                 "long_term": _heuristic_match(signal_text, pool, mode="long_term"),
                 "recent_state": _heuristic_match("\n".join(recent_messages[-RECENT_WINDOW:]), pool, mode="recent_state")

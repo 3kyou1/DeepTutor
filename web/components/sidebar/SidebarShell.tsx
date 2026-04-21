@@ -98,6 +98,7 @@ export function SidebarShell({
               width={22}
               height={22}
               className="rounded-md"
+              style={{ width: "auto", height: "auto" }}
             />
           </Link>
           <button
@@ -189,6 +190,7 @@ export function SidebarShell({
             width={22}
             height={22}
             className="transition-transform duration-200 group-hover:scale-105"
+            style={{ width: "auto", height: "auto" }}
           />
           <span className="text-[16px] font-semibold leading-none tracking-[-0.02em] text-[var(--foreground)]">
             DeepTutor

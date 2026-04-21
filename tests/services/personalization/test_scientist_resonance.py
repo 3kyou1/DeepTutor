@@ -121,6 +121,7 @@ def test_get_scientist_resonance_llm_config_allows_partial_env_overrides(
 @pytest.mark.asyncio
 async def test_infer_scientist_resonance_passes_dedicated_llm_config(
     monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     from deeptutor.services.personalization import scientist_resonance as module
 
@@ -152,11 +153,12 @@ async def test_infer_scientist_resonance_passes_dedicated_llm_config(
     monkeypatch.setattr(module, "get_scientist_resonance_llm_config", lambda: llm_config)
     monkeypatch.setattr(module, "complete", fake_complete)
 
-    result = await module.infer_scientist_resonance(
-        profile_text="偏模式敏感",
-        recent_messages=["最近在反复比较不同解法"],
-        language="zh",
-    )
+    with caplog.at_level("INFO"):
+        result = await module.infer_scientist_resonance(
+            profile_text="偏模式敏感",
+            recent_messages=["最近在反复比较不同解法"],
+            language="zh",
+        )
 
     assert captured["model"] == "resonance-model"
     assert captured["api_key"] == "resonance-key"
@@ -166,6 +168,8 @@ async def test_infer_scientist_resonance_passes_dedicated_llm_config(
     assert captured["reasoning_effort"] == "high"
     assert captured["extra_headers"] == {"X-Resonance": "1"}
     assert result["long_term"]["slug"] == "ramanujan"
+    assert "Scientist Resonance requesting LLM" in caplog.text
+    assert "model=resonance-model" in caplog.text
 
 
 @pytest.mark.asyncio
@@ -249,3 +253,35 @@ async def test_get_resonance_returns_null_recent_state_when_not_enough_messages(
 
     assert result["long_term"]["slug"] == "turing"
     assert result["recent_state"] is None
+
+
+@pytest.mark.asyncio
+async def test_get_resonance_logs_fallback_reason(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    store: SQLiteSessionStore,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from deeptutor.services.personalization.scientist_resonance import ScientistResonanceService
+
+    async def failing_complete(*args, **kwargs):
+        raise RuntimeError("llm unavailable")
+
+    monkeypatch.setattr(
+        "deeptutor.services.personalization.scientist_resonance.complete",
+        failing_complete,
+    )
+
+    await store.create_session(session_id="s1")
+    for idx in range(4):
+        await store.add_message(session_id="s1", role="user", content=f"user message {idx}")
+
+    memory_service = make_memory_service(tmp_path, store=store, profile_text="## Preferences\n- 偏本质导向")
+    service = ScientistResonanceService(memory_service=memory_service, store=store)
+
+    with caplog.at_level("WARNING"):
+        result = await service.get_resonance(language="zh")
+
+    assert result["long_term"] is not None
+    assert "Scientist Resonance LLM inference failed; falling back to heuristic match" in caplog.text
+    assert "llm unavailable" in caplog.text
