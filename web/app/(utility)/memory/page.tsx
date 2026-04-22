@@ -33,23 +33,6 @@ interface MemoryData {
   profile_updated_at: string | null;
 }
 
-const TABS: { key: MemoryFile; label: string; icon: typeof Brain; hint: string; placeholder: string }[] = [
-  {
-    key: "summary",
-    label: "Summary",
-    icon: BookOpen,
-    hint: "Running summary of the learning journey. Auto-updated after conversations.",
-    placeholder: "## Current Focus\n- ...\n\n## Accomplishments\n- ...\n\n## Open Questions\n- ...",
-  },
-  {
-    key: "profile",
-    label: "Profile",
-    icon: User,
-    hint: "User identity, preferences, and knowledge levels. Auto-updated after conversations.",
-    placeholder: "## Identity\n- ...\n\n## Learning Style\n- ...\n\n## Knowledge Level\n- ...\n\n## Preferences\n- ...",
-  },
-];
-
 const EMPTY: MemoryData = {
   summary: "",
   profile: "",
@@ -66,10 +49,10 @@ const EMPTY_COLD_START_STATUS: ColdStartStatus = {
   can_reinitialize: true,
 };
 
-function formatUpdatedAt(value: string | null): string {
-  if (!value) return "Not updated yet";
+function formatUpdatedAt(value: string | null, t: (key: string) => string): string {
+  if (!value) return t("memory.updated.not_yet");
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Unknown";
+  if (Number.isNaN(date.getTime())) return t("Unknown");
   return date.toLocaleString();
 }
 
@@ -90,7 +73,26 @@ export default function MemoryPage() {
   const [showScientistResonanceModal, setShowScientistResonanceModal] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const tab = TABS.find((t) => t.key === activeTab)!;
+  const tabs: { key: MemoryFile; label: string; emptyLabel: string; icon: typeof Brain; hint: string; placeholder: string }[] = [
+    {
+      key: "summary",
+      label: t("memory.tab.summary.label"),
+      emptyLabel: t("memory.tab.summary.empty_label"),
+      icon: BookOpen,
+      hint: t("memory.tab.summary.hint"),
+      placeholder: t("memory.tab.summary.placeholder"),
+    },
+    {
+      key: "profile",
+      label: t("memory.tab.profile.label"),
+      emptyLabel: t("memory.tab.profile.empty_label"),
+      icon: User,
+      hint: t("memory.tab.profile.hint"),
+      placeholder: t("memory.tab.profile.placeholder"),
+    },
+  ];
+
+  const tab = tabs.find((item) => item.key === activeTab)!;
   const editorValue = editors[activeTab];
   const hasChanges = editorValue !== data[activeTab];
   const updatedAt = data[`${activeTab}_updated_at` as keyof MemoryData] as string | null;
@@ -138,11 +140,11 @@ export default function MemoryPage() {
       const d: MemoryData = await res.json();
       setData(d);
       setEditors((prev) => ({ ...prev, [activeTab]: d[activeTab] || "" }));
-      setToast(`${tab.label} saved`);
+      setToast(t("memory.toast.saved", { label: tab.label }));
     } finally {
       setSaving(false);
     }
-  }, [activeTab, editorValue, tab.label]);
+  }, [activeTab, editorValue, t, tab.label]);
 
   const refreshMemory = useCallback(async () => {
     setRefreshing(true);
@@ -155,14 +157,14 @@ export default function MemoryPage() {
       const d: MemoryData = await res.json();
       setData(d);
       setEditors({ summary: d.summary || "", profile: d.profile || "" });
-      setToast("Memory refreshed from session");
+      setToast(t("memory.toast.refreshed"));
     } finally {
       setRefreshing(false);
     }
-  }, [activeSessionId, language]);
+  }, [activeSessionId, language, t]);
 
   const clearMemory = useCallback(async () => {
-    if (!window.confirm(`Clear ${tab.label}?`)) return;
+    if (!window.confirm(t("memory.confirm.clear", { label: tab.label }))) return;
     setClearing(true);
     try {
       const res = await fetch(apiUrl("/api/v1/memory/clear"), {
@@ -173,11 +175,11 @@ export default function MemoryPage() {
       const d: MemoryData = await res.json();
       setData(d);
       setEditors((prev) => ({ ...prev, [activeTab]: d[activeTab] || "" }));
-      setToast(`${tab.label} cleared`);
+      setToast(t("memory.toast.cleared", { label: tab.label }));
     } finally {
       setClearing(false);
     }
-  }, [activeTab, tab.label]);
+  }, [activeTab, t, tab.label]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -232,7 +234,7 @@ export default function MemoryPage() {
               <p className="mt-1 text-[13px] text-[var(--primary)] animate-fade-in">{toast}</p>
             ) : (
               <p className="mt-1 text-[13px] text-[var(--muted-foreground)]">
-                {hasChanges ? "Unsaved changes" : "All changes saved"}
+                {hasChanges ? t("memory.status.unsaved_changes") : t("memory.status.all_changes_saved")}
               </p>
             )}
           </div>
@@ -266,13 +268,13 @@ export default function MemoryPage() {
 
         {/* Tab selector */}
         <div className="mb-4 flex items-center gap-1 border-b border-[var(--border)]/50 pb-3">
-          {TABS.map((t) => {
-            const Icon = t.icon;
-            const active = activeTab === t.key;
+          {tabs.map((item) => {
+            const Icon = item.icon;
+            const active = activeTab === item.key;
             return (
               <button
-                key={t.key}
-                onClick={() => setActiveTab(t.key)}
+                key={item.key}
+                onClick={() => setActiveTab(item.key)}
                 className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] transition-colors ${
                   active
                     ? "bg-[var(--muted)] font-medium text-[var(--foreground)]"
@@ -280,7 +282,7 @@ export default function MemoryPage() {
                 }`}
               >
                 <Icon className="h-3.5 w-3.5" />
-                {t.label}
+                {item.label}
               </button>
             );
           })}
@@ -338,7 +340,7 @@ export default function MemoryPage() {
               ))}
             </div>
             <span className="text-[12px] text-[var(--muted-foreground)]">
-              {t("Updated")}: {formatUpdatedAt(updatedAt)}
+              {t("Updated")}: {formatUpdatedAt(updatedAt, t)}
             </span>
           </div>
         </div>
@@ -373,7 +375,7 @@ export default function MemoryPage() {
               <Brain size={18} />
             </div>
             <p className="text-[14px] font-medium text-[var(--foreground)]">
-              {t("memory.empty", { label: tab.label.toLowerCase() })}
+              {t("memory.empty", { label: tab.emptyLabel })}
             </p>
             <p className="mt-1.5 max-w-xs text-[13px] text-[var(--muted-foreground)]">
               {t("Refresh from a session or write directly in the editor.")}
