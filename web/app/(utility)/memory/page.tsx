@@ -6,6 +6,7 @@ import { Brain, Eraser, Loader2, RefreshCw, Save, BookOpen, User, Sparkles, File
 import { useTranslation } from "react-i18next";
 import { useAppShell } from "@/context/AppShellContext";
 import { apiUrl } from "@/lib/api";
+import { applyImportedProfileToMemoryState, type MemoryPageState } from "@/lib/profile-import-memory";
 import {
   getColdStartStatus,
   type ProfileImportApplyResponse,
@@ -30,12 +31,7 @@ const ProfileImportModal = dynamic(() => import("@/components/memory/ProfileImpo
 
 type MemoryFile = "summary" | "profile";
 
-interface MemoryData {
-  summary: string;
-  profile: string;
-  summary_updated_at: string | null;
-  profile_updated_at: string | null;
-}
+type MemoryData = MemoryPageState;
 
 const EMPTY: MemoryData = {
   summary: "",
@@ -111,7 +107,7 @@ export default function MemoryPage() {
   const loadMemory = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(apiUrl("/api/v1/memory"));
+      const res = await fetch(apiUrl("/api/v1/memory"), { cache: "no-store" });
       const d: MemoryData = await res.json();
       setData(d);
       setEditors({ summary: d.summary || "", profile: d.profile || "" });
@@ -226,11 +222,17 @@ export default function MemoryPage() {
   }, [loadColdStart, loadMemory, t]);
 
   const handleProfileImportApplied = useCallback(async (result: ProfileImportApplyResponse) => {
-    await Promise.all([loadMemory(), loadColdStart()]);
+    const nextState = applyImportedProfileToMemoryState(data, editors, {
+      profile: result.profile,
+      profile_updated_at: result.profile_updated_at,
+    });
+    setData(nextState.data);
+    setEditors(nextState.editors);
     setActiveTab("profile");
     setActiveView("preview");
+    await Promise.all([loadMemory(), loadColdStart()]);
     setToast(`Profile imported · ${result.updated_sections.join(", ")}`);
-  }, [loadColdStart, loadMemory]);
+  }, [data, editors, loadColdStart, loadMemory]);
 
   return (
     <div className="h-full overflow-y-auto [scrollbar-gutter:stable]">

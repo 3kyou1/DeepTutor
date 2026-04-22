@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import logging
 
 import pytest
 
@@ -179,6 +180,53 @@ def test_profile_import_preview_upload_accepts_folder_files(monkeypatch) -> None
 
     assert response.status_code == 200
     assert response.json()["provider"] == "codex"
+
+
+def test_profile_import_preview_upload_logs_request_summary(monkeypatch, caplog) -> None:
+    class FakeService:
+        async def preview_import(self, **kwargs):
+            return {
+                "mode": "merge",
+                "source_type": "folder",
+                "provider": "codex",
+                "detected_turns": 1,
+                "extracted_user_messages": ["a"],
+                "effective_signal_count": 1,
+                "warnings": [],
+                "generated_copa_markdown": "## CoPA Factors\n...",
+                "generated_summary_markdown": "## Profile Summary\n...",
+                "will_update_sections": ["CoPA Factors", "Profile Summary", "Profile Metadata"],
+                "can_apply": True,
+                "scanned_session_count": 1,
+            }
+
+    monkeypatch.setattr(
+        "deeptutor.api.routers.personalization.get_profile_import_service",
+        lambda: FakeService(),
+    )
+
+    with caplog.at_level(logging.INFO, logger="deeptutor.api.routers.personalization"):
+        with TestClient(_build_app()) as client:
+            response = client.post(
+                "/api/v1/personalization/profile-import/preview-upload",
+                data={
+                    "mode": "merge",
+                    "language": "zh",
+                    "provider": "codex",
+                    "relative_paths": "sessions/2026/04/22/rollout-1.jsonl",
+                },
+                files=[
+                    (
+                        "files",
+                        ("rollout-1.jsonl", b'{"type":"response_item"}\n', "application/json"),
+                    )
+                ],
+            )
+
+    assert response.status_code == 200
+    assert "profile import preview-upload request" in caplog.text
+    assert "provider=codex" in caplog.text
+    assert "uploaded_file_count=1" in caplog.text
 
 
 def test_profile_import_apply_upload_accepts_folder_files(monkeypatch) -> None:

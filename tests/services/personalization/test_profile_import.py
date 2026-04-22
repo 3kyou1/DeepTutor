@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 from pathlib import Path
 
@@ -280,6 +281,38 @@ async def test_preview_import_from_codex_folder(monkeypatch: pytest.MonkeyPatch,
     assert preview.provider == "codex"
     assert preview.scanned_session_count == 1
     assert preview.extracted_user_messages == ["我喜欢先给结论"]
+
+
+@pytest.mark.asyncio
+async def test_preview_import_logs_parse_summary(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from deeptutor.services.personalization.profile_import import ProfileImportService
+
+    monkeypatch.setattr("deeptutor.services.personalization.copa_profile.complete", _fake_complete)
+    monkeypatch.setattr("deeptutor.services.personalization.profile_import.complete", _fake_complete)
+
+    codex_root = tmp_path / ".codex"
+    _write_codex_history(codex_root)
+    service = ProfileImportService(memory_service=make_memory_service(tmp_path))
+
+    with caplog.at_level(logging.INFO, logger="deeptutor.services.personalization.profile_import"):
+        preview = await service.preview_import(
+            source_type="folder",
+            provider="codex",
+            folder_path=str(codex_root),
+            text="",
+            mode="merge",
+            language="zh",
+        )
+
+    assert preview.provider == "codex"
+    assert "profile import parsed input" in caplog.text
+    assert "provider=codex" in caplog.text
+    assert "scanned_session_count=1" in caplog.text
+    assert "effective_signal_count=1" in caplog.text
 
 
 @pytest.mark.asyncio

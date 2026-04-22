@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   ChevronDown,
   ChevronRight,
@@ -31,6 +31,11 @@ import {
   type ProviderCandidateGroup,
   type ProviderFolderSelection,
 } from "@/lib/profile-import-folder";
+import {
+  canApplyProfileImport,
+  toProfileImportApplyStatus,
+  type ProfileImportApplyStatus,
+} from "@/lib/profile-import-modal-state";
 
 const MarkdownRenderer = dynamic(() => import("@/components/common/MarkdownRenderer"), {
   ssr: false,
@@ -93,26 +98,12 @@ export default function ProfileImportModal({
   const [expandedGroupIds, setExpandedGroupIds] = useState<string[]>([]);
   const [text, setText] = useState("");
   const [preview, setPreview] = useState<ProfileImportPreviewResponse | null>(null);
+  const [applyStatus, setApplyStatus] = useState<ProfileImportApplyStatus | null>(null);
   const [scanning, setScanning] = useState(false);
   const [loading, setLoading] = useState(false);
   const [applying, setApplying] = useState(false);
   const [error, setError] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (!isOpen) {
-      setMode("merge");
-      setSourceType("folder");
-      setProvider("codex");
-      setFolderSelection(EMPTY_FOLDER_SELECTION);
-      setSelectedFileIds([]);
-      setExpandedGroupIds([]);
-      setText("");
-      setPreview(null);
-      setScanning(false);
-      setError("");
-    }
-  }, [isOpen]);
 
   const bindDirectoryInput = useCallback((node: HTMLInputElement | null) => {
     inputRef.current = node;
@@ -136,17 +127,62 @@ export default function ProfileImportModal({
     [selectedFiles],
   );
 
+  const clearDerivedState = useCallback(() => {
+    setPreview(null);
+    setApplyStatus(null);
+    setError("");
+  }, []);
+
   const canPreview = useMemo(() => {
     if (scanning || loading || applying) return false;
     if (sourceType === "folder") return selectedFiles.length > 0;
     return text.trim().length > 0;
   }, [applying, loading, scanning, selectedFiles.length, sourceType, text]);
 
+  const canApply = useMemo(
+    () =>
+      canApplyProfileImport({
+        canApply: Boolean(preview?.can_apply),
+        applying,
+        applied: Boolean(applyStatus),
+      }),
+    [applyStatus, applying, preview?.can_apply],
+  );
+
   const resetFolderState = useCallback(() => {
     setFolderSelection(EMPTY_FOLDER_SELECTION);
     setSelectedFileIds([]);
     setExpandedGroupIds([]);
   }, []);
+
+  const resetSession = useCallback(() => {
+    setMode("merge");
+    setSourceType("folder");
+    setProvider("codex");
+    setFolderSelection(EMPTY_FOLDER_SELECTION);
+    setSelectedFileIds([]);
+    setExpandedGroupIds([]);
+    setText("");
+    setPreview(null);
+    setApplyStatus(null);
+    setScanning(false);
+    setLoading(false);
+    setApplying(false);
+    setError("");
+  }, []);
+
+  const hasPersistedSession = useMemo(
+    () =>
+      Boolean(
+        preview ||
+          applyStatus ||
+          folderSelection.files.length > 0 ||
+          selectedFileIds.length > 0 ||
+          text.trim() ||
+          error,
+      ),
+    [applyStatus, error, folderSelection.files.length, preview, selectedFileIds.length, text],
+  );
 
   const handleFolderPick = () => {
     inputRef.current?.click();
@@ -161,6 +197,7 @@ export default function ProfileImportModal({
       setFolderSelection(selection);
       setSelectedFileIds(selection.files.map((file) => file.id));
       setExpandedGroupIds(selection.groups.map((group) => group.id));
+      setApplyStatus(null);
       setPreview(null);
       setError(selection.files.length > 0 ? "" : t("profile_import.modal.folder_no_match"));
     } finally {
@@ -175,9 +212,8 @@ export default function ProfileImportModal({
         ? current.filter((item) => item !== fileId)
         : [...current, fileId],
     );
-    setPreview(null);
-    setError("");
-  }, []);
+    clearDerivedState();
+  }, [clearDerivedState]);
 
   const handleToggleGroup = useCallback((group: ProviderCandidateGroup<File>) => {
     const groupIds = group.files.map((file) => file.id);
@@ -194,9 +230,8 @@ export default function ProfileImportModal({
         .map((file) => file.id)
         .filter((id) => currentSet.has(id));
     });
-    setPreview(null);
-    setError("");
-  }, [folderSelection.files]);
+    clearDerivedState();
+  }, [clearDerivedState, folderSelection.files]);
 
   const handleToggleGroupExpanded = useCallback((groupId: string) => {
     setExpandedGroupIds((current) =>
@@ -208,15 +243,13 @@ export default function ProfileImportModal({
 
   const handleSelectAll = useCallback(() => {
     setSelectedFileIds(folderSelection.files.map((file) => file.id));
-    setPreview(null);
-    setError("");
-  }, [folderSelection.files]);
+    clearDerivedState();
+  }, [clearDerivedState, folderSelection.files]);
 
   const handleClearSelection = useCallback(() => {
     setSelectedFileIds([]);
-    setPreview(null);
-    setError("");
-  }, []);
+    clearDerivedState();
+  }, [clearDerivedState]);
 
   const handlePreview = async () => {
     if (!canPreview) return;
@@ -225,6 +258,7 @@ export default function ProfileImportModal({
       return;
     }
     setLoading(true);
+    setApplyStatus(null);
     setError("");
     try {
       const result =
@@ -252,7 +286,7 @@ export default function ProfileImportModal({
   };
 
   const handleApply = async () => {
-    if (!preview?.can_apply || applying) return;
+    if (!canApply) return;
     if (sourceType === "folder" && selectedFiles.length === 0) {
       setError(t("profile_import.modal.folder_none_selected"));
       return;
@@ -277,7 +311,7 @@ export default function ProfileImportModal({
               text,
             });
       await onApplied(result);
-      onClose();
+      setApplyStatus(toProfileImportApplyStatus(result));
     } catch (err) {
       setError(err instanceof Error ? err.message : t("Unknown error"));
     } finally {
@@ -285,19 +319,38 @@ export default function ProfileImportModal({
     }
   };
 
+  const formatApplyUpdatedAt = useCallback(
+    (value: string | null) => {
+      if (!value) return t("memory.updated.not_yet");
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return value;
+      return date.toLocaleString();
+    },
+    [t],
+  );
+
   const footer = (
     <div className="flex items-center justify-between gap-3">
       <div className="text-[12px] text-[var(--muted-foreground)]">
         {t("profile_import.modal.footer_notice")}
       </div>
       <div className="flex items-center gap-2">
+        {hasPersistedSession ? (
+          <button
+            type="button"
+            onClick={resetSession}
+            disabled={scanning || loading || applying}
+            className="rounded-lg border border-[var(--border)]/70 px-3 py-2 text-[13px] text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)] disabled:opacity-40"
+          >
+            {t("profile_import.modal.reset")}
+          </button>
+        ) : null}
         <button
           type="button"
           onClick={onClose}
-          disabled={scanning || loading || applying}
-          className="rounded-lg border border-[var(--border)]/70 px-3 py-2 text-[13px] text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)] disabled:opacity-50"
+          className="rounded-lg border border-[var(--border)]/70 px-3 py-2 text-[13px] text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)]"
         >
-          {t("profile_import.modal.cancel")}
+          {t("profile_import.modal.close")}
         </button>
         <button
           type="button"
@@ -310,11 +363,11 @@ export default function ProfileImportModal({
         <button
           type="button"
           onClick={() => void handleApply()}
-          disabled={!preview?.can_apply || applying}
+          disabled={!canApply}
           className="inline-flex items-center gap-2 rounded-lg bg-[var(--foreground)] px-3 py-2 text-[13px] font-medium text-[var(--background)] transition-opacity disabled:opacity-40"
         >
           {applying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-          {t("profile_import.modal.apply")}
+          {applyStatus ? t("profile_import.modal.applied") : t("profile_import.modal.apply")}
         </button>
       </div>
     </div>
@@ -323,12 +376,12 @@ export default function ProfileImportModal({
   return (
     <Modal
       isOpen={isOpen}
-      onClose={scanning || loading || applying ? () => undefined : onClose}
+      onClose={onClose}
       title={t("profile_import.modal.title")}
       titleIcon={<FileUp className="h-4 w-4" />}
       width="xl"
       footer={footer}
-      closeOnBackdrop={!scanning && !loading && !applying}
+      closeOnBackdrop={true}
     >
       <div className="space-y-5 px-5 py-4">
         <input
@@ -355,7 +408,10 @@ export default function ProfileImportModal({
                 <button
                   key={option.value}
                   type="button"
-                  onClick={() => setMode(option.value)}
+                  onClick={() => {
+                    setMode(option.value);
+                    clearDerivedState();
+                  }}
                   className={`rounded-xl border px-3 py-3 text-left transition-colors ${
                     active
                       ? "border-[var(--foreground)] bg-[var(--foreground)] text-[var(--background)]"
@@ -384,8 +440,7 @@ export default function ProfileImportModal({
                   type="button"
                   onClick={() => {
                     setSourceType(option.value);
-                    setPreview(null);
-                    setError("");
+                    clearDerivedState();
                   }}
                   className={`rounded-xl border px-3 py-3 text-left transition-colors ${
                     active
@@ -419,9 +474,8 @@ export default function ProfileImportModal({
                       type="button"
                       onClick={() => {
                         setProvider(option);
-                        setPreview(null);
+                        clearDerivedState();
                         resetFolderState();
-                        setError("");
                       }}
                       className={`w-full rounded-xl border px-3 py-2 text-left text-[13px] transition-colors ${
                         active
@@ -612,7 +666,7 @@ export default function ProfileImportModal({
               value={text}
               onChange={(e) => {
                 setText(e.target.value);
-                setPreview(null);
+                clearDerivedState();
               }}
               spellCheck={false}
               className="min-h-[240px] w-full resize-none rounded-2xl border border-[var(--border)] bg-transparent px-4 py-3 font-mono text-[12px] leading-6 text-[var(--foreground)] outline-none transition-colors focus:border-[var(--ring)]"
@@ -624,6 +678,20 @@ export default function ProfileImportModal({
         {error ? (
           <div className="rounded-xl border border-red-500/30 bg-red-500/5 px-3 py-2 text-[12px] text-red-500">
             {error}
+          </div>
+        ) : null}
+
+        {applyStatus ? (
+          <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3">
+            <p className="text-[12px] font-medium text-emerald-700">
+              {t("profile_import.modal.applied")}
+            </p>
+            <p className="mt-1 text-[12px] leading-6 text-emerald-700/90">
+              {t("profile_import.modal.applied_notice", {
+                sections: applyStatus.updatedSections.join(", "),
+                updatedAt: formatApplyUpdatedAt(applyStatus.profileUpdatedAt),
+              })}
+            </p>
           </div>
         ) : null}
 

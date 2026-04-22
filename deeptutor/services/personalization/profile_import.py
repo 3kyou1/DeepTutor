@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from time import perf_counter
 import tempfile
 from typing import Literal
 
@@ -24,6 +26,7 @@ _ROLE_PATTERNS: tuple[tuple[re.Pattern[str], ImportRole], ...] = (
     (re.compile(r"^\s*(?:助手|模型)\s*[:：]\s*(.*)$", re.IGNORECASE), "assistant"),
 )
 _STOP_PHRASES = {"谢谢", "继续", "下一题", "收到", "好的", "ok", "thanks", "thank you"}
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -119,11 +122,30 @@ class ProfileImportService:
         text: str,
         uploaded_files: list[UploadedImportFile] | None = None,
     ) -> ImportParseResult:
+        logger.info(
+            "profile import parse start source_type=%s provider=%s has_folder=%s uploaded_file_count=%d text_length=%d",
+            source_type,
+            provider,
+            bool(folder_path),
+            len(uploaded_files or []),
+            len(text or ""),
+        )
         if source_type == "pasted_text":
             normalized = str(text or "").replace("\r\n", "\n").strip()
             if not normalized:
                 raise ValueError("empty_import_input")
-            return self._parse_text_input(normalized)
+            result = self._parse_text_input(normalized)
+            logger.info(
+                "profile import parsed input source_type=%s provider=%s detected_turns=%d user_segment_count=%d assistant_segment_count=%d scanned_session_count=%d warnings=%d",
+                result.source_type,
+                result.provider,
+                result.detected_turns,
+                result.user_segment_count,
+                result.assistant_segment_count,
+                result.scanned_session_count,
+                len(result.warnings),
+            )
+            return result
 
         if source_type != "folder":
             raise ValueError("unsupported_import_source")
@@ -136,11 +158,22 @@ class ProfileImportService:
                 provider=provider,
                 uploaded_files=uploaded_files,
             )
-            return self._provider_result_to_parse_result(
+            result = self._provider_result_to_parse_result(
                 provider=provider,
                 provider_result=provider_result,
                 folder_path=None,
             )
+            logger.info(
+                "profile import parsed input source_type=%s provider=%s detected_turns=%d user_segment_count=%d assistant_segment_count=%d scanned_session_count=%d warnings=%d",
+                result.source_type,
+                result.provider,
+                result.detected_turns,
+                result.user_segment_count,
+                result.assistant_segment_count,
+                result.scanned_session_count,
+                len(result.warnings),
+            )
+            return result
         if not folder_path:
             raise ValueError("folder_path_required")
 
@@ -149,11 +182,22 @@ class ProfileImportService:
             raise ValueError("import_folder_not_found")
 
         provider_result = load_provider_history(provider, folder)
-        return self._provider_result_to_parse_result(
+        result = self._provider_result_to_parse_result(
             provider=provider,
             provider_result=provider_result,
             folder_path=str(folder),
         )
+        logger.info(
+            "profile import parsed input source_type=%s provider=%s detected_turns=%d user_segment_count=%d assistant_segment_count=%d scanned_session_count=%d warnings=%d",
+            result.source_type,
+            result.provider,
+            result.detected_turns,
+            result.user_segment_count,
+            result.assistant_segment_count,
+            result.scanned_session_count,
+            len(result.warnings),
+        )
+        return result
 
     def _provider_result_to_parse_result(
         self,
@@ -192,6 +236,12 @@ class ProfileImportService:
     ):
         with tempfile.TemporaryDirectory(prefix="deeptutor-history-import-") as tmp_dir:
             root = Path(tmp_dir)
+            logger.info(
+                "profile import materializing uploaded files provider=%s uploaded_file_count=%d uploaded_total_bytes=%d",
+                provider,
+                len(uploaded_files),
+                sum(len(item.content_bytes) for item in uploaded_files),
+            )
             for item in uploaded_files:
                 relative_path = self._safe_uploaded_relative_path(item.relative_path)
                 target = root / relative_path
@@ -238,6 +288,7 @@ class ProfileImportService:
         language: str = "zh",
         uploaded_files: list[UploadedImportFile] | None = None,
     ) -> ProfileImportPreview:
+        started_at = perf_counter()
         parse_result = self.parse_import_input(
             source_type=source_type,
             provider=provider,
@@ -256,7 +307,7 @@ class ProfileImportService:
             copa_markdown=copa_markdown,
             language=language,
         )
-        return ProfileImportPreview(
+        preview = ProfileImportPreview(
             mode=mode,
             source_type=source_type,
             provider=provider,
@@ -270,6 +321,17 @@ class ProfileImportService:
             can_apply=bool(messages),
             scanned_session_count=parse_result.scanned_session_count,
         )
+        logger.info(
+            "profile import preview ready provider=%s mode=%s detected_turns=%d effective_signal_count=%d scanned_session_count=%d warnings=%d duration_ms=%.1f",
+            provider,
+            mode,
+            parse_result.detected_turns,
+            len(messages),
+            parse_result.scanned_session_count,
+            len(warnings),
+            (perf_counter() - started_at) * 1000,
+        )
+        return preview
 
     async def apply_import(
         self,
@@ -282,6 +344,7 @@ class ProfileImportService:
         language: str = "zh",
         uploaded_files: list[UploadedImportFile] | None = None,
     ) -> ProfileImportApplyResult:
+        started_at = perf_counter()
         preview = await self.preview_import(
             source_type=source_type,
             provider=provider,
@@ -309,7 +372,7 @@ class ProfileImportService:
             history_import_provider=provider,
             history_import_signal_count=preview.effective_signal_count,
         )
-        return ProfileImportApplyResult(
+        result = ProfileImportApplyResult(
             applied=True,
             mode=mode,
             warnings=preview.warnings,
@@ -317,6 +380,15 @@ class ProfileImportService:
             profile_updated_at=snapshot.profile_updated_at,
             profile=snapshot.profile,
         )
+        logger.info(
+            "profile import apply completed provider=%s mode=%s effective_signal_count=%d updated_sections=%d duration_ms=%.1f",
+            provider,
+            mode,
+            preview.effective_signal_count,
+            len(preview.will_update_sections),
+            (perf_counter() - started_at) * 1000,
+        )
+        return result
 
     async def generate_profile_summary(
         self,

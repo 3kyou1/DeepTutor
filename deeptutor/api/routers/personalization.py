@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import logging
 from typing import Any, Literal
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
@@ -14,6 +15,7 @@ from deeptutor.services.personalization import (
 from deeptutor.services.personalization.profile_import import UploadedImportFile
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 class ColdStartSubmitRequest(BaseModel):
@@ -60,6 +62,10 @@ async def _read_uploaded_import_files(
     return uploaded_files
 
 
+def _uploaded_total_bytes(uploaded_files: list[UploadedImportFile]) -> int:
+    return sum(len(item.content_bytes) for item in uploaded_files)
+
+
 @router.get("/cold-start/questions")
 async def list_cold_start_questions(language: str = Query(default="zh")):
     service = get_cold_start_service()
@@ -91,6 +97,14 @@ async def submit_cold_start_answers(payload: ColdStartSubmitRequest):
 @router.post("/profile-import/preview")
 async def preview_profile_import(payload: ProfileImportRequest):
     service = get_profile_import_service()
+    logger.info(
+        "profile import preview request source_type=%s provider=%s mode=%s has_folder=%s text_length=%d",
+        payload.source_type,
+        payload.provider,
+        payload.mode,
+        bool(payload.folder_path),
+        len(payload.text or ""),
+    )
     try:
         result = await _resolve(
             service.preview_import(
@@ -104,8 +118,10 @@ async def preview_profile_import(payload: ProfileImportRequest):
         )
         return result.to_dict() if hasattr(result, "to_dict") else result
     except ValueError as exc:
+        logger.warning("profile import preview rejected detail=%s", exc)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:  # pragma: no cover - defensive path
+        logger.exception("profile import preview failed")
         raise HTTPException(
             status_code=500,
             detail="failed_to_generate_import_profile",
@@ -115,6 +131,14 @@ async def preview_profile_import(payload: ProfileImportRequest):
 @router.post("/profile-import/apply")
 async def apply_profile_import(payload: ProfileImportRequest):
     service = get_profile_import_service()
+    logger.info(
+        "profile import apply request source_type=%s provider=%s mode=%s has_folder=%s text_length=%d",
+        payload.source_type,
+        payload.provider,
+        payload.mode,
+        bool(payload.folder_path),
+        len(payload.text or ""),
+    )
     try:
         result = await _resolve(
             service.apply_import(
@@ -128,8 +152,10 @@ async def apply_profile_import(payload: ProfileImportRequest):
         )
         return result.to_dict() if hasattr(result, "to_dict") else result
     except ValueError as exc:
+        logger.warning("profile import apply rejected detail=%s", exc)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:  # pragma: no cover - defensive path
+        logger.exception("profile import apply failed")
         raise HTTPException(
             status_code=500,
             detail="failed_to_write_import_profile",
@@ -146,6 +172,13 @@ async def preview_profile_import_upload(
 ):
     service = get_profile_import_service()
     uploaded_files = await _read_uploaded_import_files(files, relative_paths)
+    logger.info(
+        "profile import preview-upload request provider=%s mode=%s uploaded_file_count=%d uploaded_total_bytes=%d",
+        provider,
+        mode,
+        len(uploaded_files),
+        _uploaded_total_bytes(uploaded_files),
+    )
     try:
         result = await _resolve(
             service.preview_import(
@@ -160,8 +193,10 @@ async def preview_profile_import_upload(
         )
         return result.to_dict() if hasattr(result, "to_dict") else result
     except ValueError as exc:
+        logger.warning("profile import preview-upload rejected detail=%s", exc)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:  # pragma: no cover - defensive path
+        logger.exception("profile import preview-upload failed")
         raise HTTPException(
             status_code=500,
             detail="failed_to_generate_import_profile",
@@ -178,6 +213,13 @@ async def apply_profile_import_upload(
 ):
     service = get_profile_import_service()
     uploaded_files = await _read_uploaded_import_files(files, relative_paths)
+    logger.info(
+        "profile import apply-upload request provider=%s mode=%s uploaded_file_count=%d uploaded_total_bytes=%d",
+        provider,
+        mode,
+        len(uploaded_files),
+        _uploaded_total_bytes(uploaded_files),
+    )
     try:
         result = await _resolve(
             service.apply_import(
@@ -192,8 +234,10 @@ async def apply_profile_import_upload(
         )
         return result.to_dict() if hasattr(result, "to_dict") else result
     except ValueError as exc:
+        logger.warning("profile import apply-upload rejected detail=%s", exc)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:  # pragma: no cover - defensive path
+        logger.exception("profile import apply-upload failed")
         raise HTTPException(
             status_code=500,
             detail="failed_to_write_import_profile",
