@@ -110,6 +110,12 @@ class MemoryService:
     def read_copa_section(self) -> str:
         return _extract_named_h2_section(self.read_profile(), "CoPA Factors")
 
+    def read_profile_summary_section(self) -> str:
+        return _extract_named_h2_section(self.read_profile(), "Profile Summary")
+
+    def read_profile_metadata_section(self) -> str:
+        return _extract_named_h2_section(self.read_profile(), "Profile Metadata")
+
     def _file_updated_at(self, which: MemoryFile) -> str | None:
         path = self._path(which)
         if not path.exists():
@@ -147,6 +153,29 @@ class MemoryService:
     def write_copa_section(self, content: str) -> MemorySnapshot:
         profile = self.read_profile()
         updated = _replace_named_h2_section(profile, "CoPA Factors", content)
+        return self.write_file("profile", updated)
+
+    def write_profile_summary_section(self, content: str) -> MemorySnapshot:
+        profile = self.read_profile()
+        updated = _replace_named_h2_section(profile, "Profile Summary", content)
+        return self.write_file("profile", updated)
+
+    def write_profile_metadata_section(self, content: str) -> MemorySnapshot:
+        profile = self.read_profile()
+        updated = _replace_named_h2_section(profile, "Profile Metadata", content)
+        return self.write_file("profile", updated)
+
+    def rewrite_profile_generated_sections(
+        self,
+        *,
+        copa_markdown: str,
+        summary_markdown: str,
+        metadata_markdown: str = "",
+    ) -> MemorySnapshot:
+        profile = self.read_profile()
+        updated = _replace_named_h2_section(profile, "CoPA Factors", copa_markdown)
+        updated = _replace_named_h2_section(updated, "Profile Summary", summary_markdown)
+        updated = _replace_named_h2_section(updated, "Profile Metadata", metadata_markdown)
         return self.write_file("profile", updated)
 
     def clear_file(self, which: MemoryFile) -> MemorySnapshot:
