@@ -275,6 +275,8 @@ class CoPAProfileService:
                 "refresh_threshold": REFRESH_THRESHOLD,
                 "last_updated_at": None,
                 "profile_source": None,
+                "history_import_provider": None,
+                "history_import_signal_count": 0,
                 "live_rebuild_threshold": REFRESH_THRESHOLD,
                 "cold_start": None,
             }
@@ -287,6 +289,8 @@ class CoPAProfileService:
             "refresh_threshold": int(payload.get("refresh_threshold") or REFRESH_THRESHOLD),
             "last_updated_at": payload.get("last_updated_at"),
             "profile_source": payload.get("profile_source"),
+            "history_import_provider": payload.get("history_import_provider"),
+            "history_import_signal_count": int(payload.get("history_import_signal_count") or 0),
             "live_rebuild_threshold": int(
                 payload.get("live_rebuild_threshold") or REFRESH_THRESHOLD
             ),
@@ -299,6 +303,8 @@ class CoPAProfileService:
         messages_consumed: int,
         threshold: int,
         profile_source: str | None = None,
+        history_import_provider: str | None = None,
+        history_import_signal_count: int = 0,
         live_rebuild_threshold: int | None = None,
         cold_start: dict[str, Any] | None = None,
     ) -> None:
@@ -310,6 +316,8 @@ class CoPAProfileService:
                     "refresh_threshold": int(threshold),
                     "last_updated_at": datetime.now().astimezone().isoformat(),
                     "profile_source": profile_source,
+                    "history_import_provider": history_import_provider,
+                    "history_import_signal_count": int(history_import_signal_count or 0),
                     "live_rebuild_threshold": int(
                         live_rebuild_threshold or REFRESH_THRESHOLD
                     ),
@@ -319,6 +327,26 @@ class CoPAProfileService:
                 indent=2,
             ),
             encoding="utf-8",
+        )
+
+    def mark_profile_refreshed(
+        self,
+        *,
+        profile_source: str,
+        history_import_provider: str | None = None,
+        history_import_signal_count: int = 0,
+    ) -> None:
+        state = self._read_state()
+        self._write_state(
+            messages_consumed=int(state.get("messages_consumed") or 0),
+            threshold=int(state.get("refresh_threshold") or REFRESH_THRESHOLD),
+            profile_source=profile_source,
+            history_import_provider=history_import_provider,
+            history_import_signal_count=history_import_signal_count,
+            live_rebuild_threshold=int(
+                state.get("live_rebuild_threshold") or state.get("refresh_threshold") or REFRESH_THRESHOLD
+            ),
+            cold_start=state.get("cold_start") if isinstance(state.get("cold_start"), dict) else None,
         )
 
     async def refresh_profile(self, *, language: str = "zh") -> CoPARefreshResult:

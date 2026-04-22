@@ -2,12 +2,13 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Brain, Eraser, Loader2, RefreshCw, Save, BookOpen, User, Sparkles } from "lucide-react";
+import { Brain, Eraser, Loader2, RefreshCw, Save, BookOpen, User, Sparkles, FileUp } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useAppShell } from "@/context/AppShellContext";
 import { apiUrl } from "@/lib/api";
 import {
   getColdStartStatus,
+  type ProfileImportApplyResponse,
   type ColdStartStatus,
 } from "@/lib/personalization-api";
 
@@ -23,6 +24,9 @@ const ScientistResonanceModal = dynamic(
     ssr: false,
   },
 );
+const ProfileImportModal = dynamic(() => import("@/components/memory/ProfileImportModal"), {
+  ssr: false,
+});
 
 type MemoryFile = "summary" | "profile";
 
@@ -88,6 +92,7 @@ export default function MemoryPage() {
   const [coldStartStatus, setColdStartStatus] = useState<ColdStartStatus>(EMPTY_COLD_START_STATUS);
   const [showColdStartModal, setShowColdStartModal] = useState(false);
   const [showScientistResonanceModal, setShowScientistResonanceModal] = useState(false);
+  const [showProfileImportModal, setShowProfileImportModal] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const tab = TABS.find((t) => t.key === activeTab)!;
@@ -218,6 +223,13 @@ export default function MemoryPage() {
     setToast(t("copa_cold_start.toast.success"));
   }, [loadColdStart, loadMemory, t]);
 
+  const handleProfileImportApplied = useCallback(async (result: ProfileImportApplyResponse) => {
+    await Promise.all([loadMemory(), loadColdStart()]);
+    setActiveTab("profile");
+    setActiveView("preview");
+    setToast(`Profile imported · ${result.updated_sections.join(", ")}`);
+  }, [loadColdStart, loadMemory]);
+
   return (
     <div className="h-full overflow-y-auto [scrollbar-gutter:stable]">
       <div className="mx-auto max-w-[960px] px-6 py-8">
@@ -313,6 +325,14 @@ export default function MemoryPage() {
                   <Sparkles className="h-3.5 w-3.5" />
                   {t("scientist_resonance.entry.label")}
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setShowProfileImportModal(true)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)]/70 px-3 py-1.5 text-[12px] font-medium text-[var(--foreground)] transition-colors hover:border-[var(--border)]"
+                >
+                  <FileUp className="h-3.5 w-3.5" />
+                  {t("profile_import.entry.label")}
+                </button>
               </div>
             ) : null}
             {activeTab === "profile" && coldStartStatus.profile_source === "live" ? (
@@ -391,6 +411,12 @@ export default function MemoryPage() {
         isOpen={showScientistResonanceModal}
         language={language}
         onClose={() => setShowScientistResonanceModal(false)}
+      />
+      <ProfileImportModal
+        isOpen={showProfileImportModal}
+        language={language}
+        onClose={() => setShowProfileImportModal(false)}
+        onApplied={handleProfileImportApplied}
       />
     </div>
   );

@@ -35,6 +35,55 @@ export interface ColdStartSubmitResponse {
   profile_preview: string;
 }
 
+export type ProfileImportMode = "create" | "merge" | "overwrite";
+export type ProfileImportSourceType = "folder" | "pasted_text";
+export type ProfileImportProvider = "codex" | "claude_code" | "cursor";
+
+export interface ProfileImportRequest {
+  mode: ProfileImportMode;
+  language: string;
+  source_type: ProfileImportSourceType;
+  provider?: ProfileImportProvider | null;
+  folder_path?: string | null;
+  text: string;
+}
+
+export interface ProfileImportUploadItem {
+  file: File;
+  relative_path: string;
+}
+
+export interface ProfileImportUploadRequest {
+  mode: ProfileImportMode;
+  language: string;
+  provider: ProfileImportProvider;
+  files: ProfileImportUploadItem[];
+}
+
+export interface ProfileImportPreviewResponse {
+  mode: ProfileImportMode;
+  source_type: ProfileImportSourceType;
+  provider: ProfileImportProvider | null;
+  detected_turns: number;
+  extracted_user_messages: string[];
+  effective_signal_count: number;
+  warnings: string[];
+  generated_copa_markdown: string;
+  generated_summary_markdown: string;
+  will_update_sections: string[];
+  can_apply: boolean;
+  scanned_session_count: number;
+}
+
+export interface ProfileImportApplyResponse {
+  applied: boolean;
+  mode: ProfileImportMode;
+  warnings: string[];
+  updated_sections: string[];
+  profile_updated_at: string | null;
+  profile: string;
+}
+
 export interface ScientistResonanceCard {
   name: string;
   slug: string;
@@ -89,6 +138,60 @@ export async function submitColdStartAnswers(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ language, answers }),
+  });
+  return parseJsonOrThrow(response);
+}
+
+export async function previewProfileImport(
+  payload: ProfileImportRequest,
+): Promise<ProfileImportPreviewResponse> {
+  const response = await fetch(apiUrl("/api/v1/personalization/profile-import/preview"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return parseJsonOrThrow(response);
+}
+
+export async function applyProfileImport(
+  payload: ProfileImportRequest,
+): Promise<ProfileImportApplyResponse> {
+  const response = await fetch(apiUrl("/api/v1/personalization/profile-import/apply"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return parseJsonOrThrow(response);
+}
+
+function buildProfileImportUploadFormData(payload: ProfileImportUploadRequest): FormData {
+  const formData = new FormData();
+  formData.append("mode", payload.mode);
+  formData.append("language", payload.language);
+  formData.append("provider", payload.provider);
+  for (const item of payload.files) {
+    formData.append("files", item.file);
+    formData.append("relative_paths", item.relative_path);
+  }
+  return formData;
+}
+
+export async function previewProfileImportUpload(
+  payload: ProfileImportUploadRequest,
+): Promise<ProfileImportPreviewResponse> {
+  const response = await fetch(apiUrl("/api/v1/personalization/profile-import/preview-upload"), {
+    method: "POST",
+    body: buildProfileImportUploadFormData(payload),
+  });
+  return parseJsonOrThrow(response);
+}
+
+export async function applyProfileImportUpload(
+  payload: ProfileImportUploadRequest,
+): Promise<ProfileImportApplyResponse> {
+  const response = await fetch(apiUrl("/api/v1/personalization/profile-import/apply-upload"), {
+    method: "POST",
+    body: buildProfileImportUploadFormData(payload),
   });
   return parseJsonOrThrow(response);
 }
